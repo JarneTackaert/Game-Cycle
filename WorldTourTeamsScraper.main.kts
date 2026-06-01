@@ -62,7 +62,7 @@ data class RiderRow(
     val name: String,
     val nationality: String,
     val age: String,
-    val specialty: String,
+    val specialties: List<String>,
 )
 
 val client: HttpClient = HttpClient.newBuilder().build()
@@ -112,7 +112,7 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
     val doc = fetch(teamUrl)
     val name = teamName(doc)
 
-    val specialty = LinkedHashMap<String, String>()  // slug -> specialty (first wins)
+    val specialty = LinkedHashMap<String, MutableList<String>>() // slug -> all specialties
     val nationality = LinkedHashMap<String, String>() // slug -> country
     val age = LinkedHashMap<String, String>()          // slug -> age (years)
     val displayName = LinkedHashMap<String, String>()  // slug -> "SURNAME First"
@@ -120,12 +120,15 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
     fun tableRows(stabClass: String): List<DocElement> =
         doc.findAll("div.stab.$stabClass table.teamlist tbody tr")
 
-    // Specialty tab: columns # | rider | specialty
+    // Specialty tab: columns # | rider | specialty.
+    // A rider can appear in multiple specialty rows (e.g. Hills AND Oneday);
+    // collect them all, keeping order and dropping duplicates.
     for (row in tableRows("specialty")) {
         val slug = row.riderSlug() ?: continue
         val cells = row.findAll("td")
         val spec = cells.lastOrNull()?.text?.trim().orEmpty()
-        specialty.putIfAbsent(slug, spec)                       // Romele-style dupes: keep first
+        val list = specialty.getOrPut(slug) { mutableListOf() }
+        if (spec.isNotEmpty() && spec !in list) list.add(spec)
         displayName.putIfAbsent(slug, row.findFirst("a").text.trim())
         row.flagCode()?.let { nationality.putIfAbsent(slug, FLAG_TO_COUNTRY[it] ?: it) }
     }
@@ -159,7 +162,7 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
             name = displayName[slug] ?: slug,
             nationality = nationality[slug] ?: "",
             age = age[slug] ?: "",
-            specialty = specialty[slug] ?: "",
+            specialties = specialty[slug] ?: emptyList(),
         )
     }
 }
@@ -191,12 +194,17 @@ for ((listingPath, gender) in categories) {
 }
 
 val out = File("worldtour_riders_$season.csv")
+// Widest rider determines how many specialty columns we need.
+val maxSpecialties = (all.maxOfOrNull { it.specialties.size } ?: 0).coerceAtLeast(1)
 out.bufferedWriter().use { w ->
-    w.write("Gender,Team,Rider,Nationality,Age,Specialty\n")
+    val specialtyHeaders = (1..maxSpecialties).joinToString(",") { "Specialty $it" }
+    w.write("Gender,Team,Rider,Nationality,Age,$specialtyHeaders\n")
     all.sortedWith(compareBy({ it.gender }, { it.team }, { it.name })).forEach { r ->
-        w.write(listOf(r.gender, r.team, r.name, r.nationality, r.age, r.specialty)
+        // Pad the specialty list out to maxSpecialties so every row has the same columns.
+        val specCells = (0 until maxSpecialties).map { r.specialties.getOrElse(it) { "" } }
+        w.write((listOf(r.gender, r.team, r.name, r.nationality, r.age) + specCells)
             .joinToString(",") { csvCell(it) })
         w.write("\n")
     }
 }
-System.err.println("Wrote ${all.size} riders to ${out.name}")
+System.err.println("Wrote ${all.size} riders to ${out.name} (up to $maxSpecialties specialties per rider)")
