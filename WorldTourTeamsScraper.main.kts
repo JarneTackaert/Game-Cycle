@@ -79,12 +79,12 @@ fun fetch(path: String): Doc {
 }
 
 /**
- * WorldTour team page URLs for a season and category.
- * category "worldtour" = men's WorldTour, "women" = women's WorldTour (women elite).
- * e.g. team/xds-astana-team-2026
+ * WorldTour team page URLs from a given listing path.
+ * Men's WorldTour and women's WorldTour live at different URLs on PCS,
+ * so we pass the full listing path rather than a query-param category.
  */
-fun getTeamUrls(season: Int, category: String): List<String> {
-    val doc = fetch("teams.php?year=$season&s=$category")
+fun getTeamUrls(listingPath: String): List<String> {
+    val doc = fetch(listingPath)
     return doc.findAll(".list.fs14.columns2.mob_columns1 a")
         .map { it.attribute("href") }
         .filter { it.startsWith("team/") }
@@ -171,15 +171,16 @@ fun csvCell(s: String): String =
 val season = args.firstOrNull()?.toIntOrNull() ?: 2026
 System.err.println("Scraping WorldTour teams for $season ...")
 
-// category code -> gender label written to the CSV
+// listing path -> gender label written to the CSV.
+// Men's and women's WorldTour are at different URLs on PCS.
 val categories = linkedMapOf(
-    "worldtour" to "M",  // men's WorldTour
-    "we" to "W",         // women's WorldTour (women elite)
+    "teams.php?year=$season&s=worldtour" to "M",  // men's WorldTour
+    "teams/women" to "W",                          // women's WorldTour
 )
 
 val all = mutableListOf<RiderRow>()
-for ((category, gender) in categories) {
-    val teamUrls = getTeamUrls(season, category)
+for ((listingPath, gender) in categories) {
+    val teamUrls = getTeamUrls(listingPath)
     System.err.println("[$gender] Found ${teamUrls.size} teams.")
     for ((i, url) in teamUrls.withIndex()) {
         val rows = scrapeTeam(url, gender)
