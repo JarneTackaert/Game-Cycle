@@ -59,9 +59,15 @@ val FLAG_TO_COUNTRY = mapOf(
 data class RiderRow(
     val gender: String,
     val team: String,
+    val slug: String,
     val name: String,
     val nationality: String,
     val age: String,
+    val dateOfBirth: String,
+    val placeOfBirth: String,
+    val height: String,
+    val weight: String,
+    val topResult: String,
     val specialties: List<String>,
 )
 
@@ -103,6 +109,76 @@ fun DocElement.flagCode(): String? =
 
 fun teamName(doc: Doc): String =
     doc.findFirst(".page-title h1").text.substringBefore('(').trim()
+
+/** The extra fields that only exist on an individual rider's page. */
+data class RiderDetails(
+    val dateOfBirth: String,
+    val placeOfBirth: String,
+    val height: String,
+    val weight: String,
+    val topResult: String,
+)
+
+val EMPTY_DETAILS = RiderDetails("", "", "", "", "")
+
+/**
+ * Read a single value out of the rider info block by its label.
+ * The block renders as "... Date of birth: 15 July 1989 (36) Weight: 63 kg ...".
+ * We grab the text between the wanted label and the next label (or end).
+ */
+fun valueAfterLabel(blockText: String, label: String, nextLabels: List<String>): String {
+    val start = blockText.indexOf(label)
+    if (start < 0) return ""
+    val after = start + label.length
+    val end = nextLabels
+        .map { blockText.indexOf(it, after) }
+        .filter { it >= 0 }
+        .minOrNull() ?: blockText.length
+    return blockText.substring(after, end).trim()
+}
+
+/**
+ * Fetch one rider page and extract date/place of birth, height, weight,
+ * and the single highest (first-listed) top result from the palmares.
+ */
+fun getRiderDetails(riderSlug: String): RiderDetails {
+    val doc = fetch("rider/$riderSlug")
+
+    // The info block holds the labelled personal data.
+    val infoText = (doc.findAll("div.rdr-info-cont").firstOrNull()?.text ?: "")
+        .replace("\u00A0", " ")
+
+    val labels = listOf(
+        "Date of birth:", "Nationality:", "Weight:", "Height:",
+        "Place of birth:", "Specialties", "Specialty",
+    )
+
+    // Date of birth: keep "15 July 1989", drop the "( 36 )" age and ordinal suffixes.
+    val dobRaw = valueAfterLabel(infoText, "Date of birth:", labels - "Date of birth:")
+    val dateOfBirth = dobRaw.substringBefore("(")
+        .replace(Regex("(\\d+)(st|nd|rd|th)"), "$1")  // "15th" -> "15"
+        .trim()
+
+    val weight = valueAfterLabel(infoText, "Weight:", labels - "Weight:")
+        .removeSuffix("kg").trim()
+    val height = valueAfterLabel(infoText, "Height:", labels - "Height:")
+        .removeSuffix("m").trim()
+    val placeOfBirth = valueAfterLabel(infoText, "Place of birth:", labels - "Place of birth:").trim()
+
+    // Top results: PCS lists the rider's biggest wins/results, most prestigious first.
+    // The list lives in the palmares/results sidebar; take the first entry's text.
+    val topResult = doc.findAll("ul.list.rdr-results li").firstOrNull()?.text?.trim()
+        ?: doc.findAll("div.mt20 ul.list li").firstOrNull()?.text?.trim()
+        ?: ""
+
+    return RiderDetails(
+        dateOfBirth = dateOfBirth,
+        placeOfBirth = placeOfBirth,
+        height = height,
+        weight = weight,
+        topResult = topResult.replace(Regex("\\s+"), " "),
+    )
+}
 
 /**
  * Each team page contains several hidden tab tables (div.stab.*). We read
@@ -159,9 +235,15 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
         RiderRow(
             gender = gender,
             team = name,
+            slug = slug,
             name = displayName[slug] ?: slug,
             nationality = nationality[slug] ?: "",
             age = age[slug] ?: "",
+            dateOfBirth = "",
+            placeOfBirth = "",
+            height = "",
+            weight = "",
+            topResult = "",
             specialties = specialty[slug] ?: emptyList(),
         )
     }
@@ -193,18 +275,42 @@ for ((listingPath, gender) in categories) {
     }
 }
 
+// Second pass: visit each rider's own page for date/place of birth, height,
+// weight, and their single highest top result. This is the slow part — one
+// request per rider — so the polite delay matters most here.
+System.err.println("Fetching individual rider details for ${all.size} riders ...")
+val detailed = all.mapIndexed { idx, r ->
+    val details = try {
+        getRiderDetails(r.slug)
+    } catch (e: Exception) {
+        System.err.println("  ! ${r.slug}: ${e.message}")
+        EMPTY_DETAILS
+    }
+    if ((idx + 1) % 25 == 0) System.err.println("  ... ${idx + 1}/${all.size}")
+    Thread.sleep(REQUEST_DELAY_MS)
+    r.copy(
+        dateOfBirth = details.dateOfBirth,
+        placeOfBirth = details.placeOfBirth,
+        height = details.height,
+        weight = details.weight,
+        topResult = details.topResult,
+    )
+}
+
 val out = File("worldtour_riders_$season.csv")
 // Widest rider determines how many specialty columns we need.
-val maxSpecialties = (all.maxOfOrNull { it.specialties.size } ?: 0).coerceAtLeast(1)
+val maxSpecialties = (detailed.maxOfOrNull { it.specialties.size } ?: 0).coerceAtLeast(1)
 out.bufferedWriter().use { w ->
     val specialtyHeaders = (1..maxSpecialties).joinToString(",") { "Specialty $it" }
-    w.write("Gender,Team,Rider,Nationality,Age,$specialtyHeaders\n")
-    all.sortedWith(compareBy({ it.gender }, { it.team }, { it.name })).forEach { r ->
+    w.write("Gender,Team,Rider,Nationality,Age,Date of birth,Place of birth,Height (m),Weight (kg),Top result,$specialtyHeaders\n")
+    detailed.sortedWith(compareBy({ it.gender }, { it.team }, { it.name })).forEach { r ->
         // Pad the specialty list out to maxSpecialties so every row has the same columns.
         val specCells = (0 until maxSpecialties).map { r.specialties.getOrElse(it) { "" } }
-        w.write((listOf(r.gender, r.team, r.name, r.nationality, r.age) + specCells)
-            .joinToString(",") { csvCell(it) })
+        w.write((listOf(
+            r.gender, r.team, r.name, r.nationality, r.age,
+            r.dateOfBirth, r.placeOfBirth, r.height, r.weight, r.topResult,
+        ) + specCells).joinToString(",") { csvCell(it) })
         w.write("\n")
     }
 }
-System.err.println("Wrote ${all.size} riders to ${out.name} (up to $maxSpecialties specialties per rider)")
+System.err.println("Wrote ${detailed.size} riders to ${out.name} (up to $maxSpecialties specialties per rider)")
