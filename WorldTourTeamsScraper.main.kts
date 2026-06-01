@@ -3,17 +3,13 @@
 /**
  * WorldTourTeamsScraper.main.kts
  *
- * A trimmed, self-contained version of the patxibocos/pcs-scraper logic.
- * It loops through every WorldTour team for a given season and, for each
- * team, extracts every rider's: name, nationality, age, and specialty —
- * all from the single team page (the hidden country/age/specialty tabs),
- * so NO per-rider page fetches are needed (~18 requests total, not 500+).
+ * Scrapes every UCI WorldTour and ProTour team (men + women) for a given
+ * season. For each team, extracts every rider's: name, nationality, age,
+ * specialty, date/place of birth, height, weight, career wins, top 3
+ * results, and previous teams.
  *
  * Run:
  *   kotlin WorldTourTeamsScraper.main.kts 2026
- *
- * (Requires a Kotlin command-line install: `sdk install kotlin`.)
- * Dependencies are pulled automatically via @file:DependsOn.
  *
  * Output: worldtour_riders_<season>.csv
  */
@@ -31,15 +27,11 @@ import java.net.http.HttpResponse
 
 val PCS_URL = "https://www.procyclingstats.com/"
 
-// Be polite: PCS does basic bot detection. A real UA + a delay between
-// requests keeps you under the radar and is the neighbourly thing to do.
 val USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 val REQUEST_DELAY_MS = 1500L
 
-// Flag code -> country name. Extend as needed; unknown codes fall back to
-// the raw 2-letter code so nothing is silently lost.
 val FLAG_TO_COUNTRY = mapOf(
     "it" to "Italy", "fr" to "France", "es" to "Spain", "de" to "Germany",
     "nl" to "Netherlands", "be" to "Belgium", "co" to "Colombia", "ec" to "Ecuador",
@@ -49,15 +41,18 @@ val FLAG_TO_COUNTRY = mapOf(
     "ch" to "Switzerland", "pt" to "Portugal", "si" to "Slovenia", "pl" to "Poland",
     "ie" to "Ireland", "ca" to "Canada", "lu" to "Luxembourg", "sk" to "Slovakia",
     "cz" to "Czechia", "ee" to "Estonia", "lv" to "Latvia", "za" to "South Africa",
-    "nz" to "New Zealand", "jp" to "Japan", "ar" to "Argentina", "br" to "Brazil",
+    "jp" to "Japan", "ar" to "Argentina", "br" to "Brazil",
     "cr" to "Costa Rica", "mx" to "Mexico", "pe" to "Peru", "ve" to "Venezuela",
     "il" to "Israel", "tr" to "Turkey", "ua" to "Ukraine", "by" to "Belarus",
     "hu" to "Hungary", "ro" to "Romania", "rs" to "Serbia", "hr" to "Croatia",
-    "fi" to "Finland", "se" to "Sweden", "lt" to "Lithuania", "nl" to "Netherlands",
+    "fi" to "Finland", "se" to "Sweden", "lt" to "Lithuania",
 )
+
+data class TeamEntry(val url: String, val gender: String, val tier: String)
 
 data class RiderRow(
     val gender: String,
+    val teamTier: String,
     val team: String,
     val slug: String,
     val name: String,
@@ -67,8 +62,9 @@ data class RiderRow(
     val placeOfBirth: String,
     val height: String,
     val weight: String,
-    val topResult: String,
-    val uciPoints: String,
+    val wins: String,
+    val topResults: List<String>,
+    val previousTeams: List<String>,
     val specialties: List<String>,
 )
 
@@ -85,180 +81,212 @@ fun fetch(path: String): Doc {
     return htmlDocument(body)
 }
 
+// ────────────────────────────────────────────────────────────────
+// skrape{it} safe wrappers
+// ────────────────────────────────────────────────────────────────
+
+fun Doc.safe(css: String): List<DocElement> =
+    try { findAll(css) } catch (_: Exception) { emptyList() }
+
+fun DocElement.safe(css: String): List<DocElement> =
+    try { findAll(css) } catch (_: Exception) { emptyList() }
+
+// ────────────────────────────────────────────────────────────────
+// Team listing with WT / PT distinction
+// ────────────────────────────────────────────────────────────────
+
 /**
- * WorldTour team page URLs from a given listing path.
- * Men's WorldTour and women's WorldTour live at different URLs on PCS,
- * so we pass the full listing path rather than a query-param category.
+ * Parse a team listing page and return team URLs tagged with gender + tier.
+ *
+ * Both men's and women's pages have the same layout:
+ *   <h4>UCI (Women's) WorldTeams</h4>
+ *   <ul class="list fs14 columns2 mob_columns1">…team links…</ul>
+ *   <ul class="list horizontal">…jersey images (skip)…</ul>
+ *   <h4>UCI (Women's) ProTeams</h4>
+ *   <ul class="list fs14 columns2 mob_columns1">…team links…</ul>
+ *
+ * Key difference: men's lists additionally have the `lh18` class, women's
+ * don't. We use `ul.columns2` which matches both. The jersey-image lists
+ * use `ul.list.horizontal` (no `columns2`) so they're excluded.
  */
-fun getTeamUrls(listingPath: String): List<String> {
+fun getTeamEntries(listingPath: String, gender: String): List<TeamEntry> {
     val doc = fetch(listingPath)
-    return doc.findAll(".list.fs14.columns2.mob_columns1 a")
+
+    // ul.columns2 targets only the team-name lists, not the jersey-image
+    // lists (those use "list horizontal" without columns2).
+    val teamLists = doc.safe("ul.columns2")
+
+    if (teamLists.size >= 2) {
+        val results = mutableListOf<TeamEntry>()
+
+        // First list: UCI WorldTeams
+        val wtUrls = teamLists[0].safe("a")
+            .map { it.attribute("href") }
+            .filter { it.startsWith("team/") }
+            .distinct()
+        results += wtUrls.map { TeamEntry(it, gender, "WT") }
+
+        // Second list: UCI ProTeams
+        val ptUrls = teamLists[1].safe("a")
+            .map { it.attribute("href") }
+            .filter { it.startsWith("team/") }
+            .distinct()
+        results += ptUrls.map { TeamEntry(it, gender, "PT") }
+
+        return results
+    }
+
+    // Fallback: single list — treat all as WT
+    val urls = (teamLists.firstOrNull()?.safe("a") ?: doc.safe(".list.fs14.columns2.mob_columns1 a"))
         .map { it.attribute("href") }
         .filter { it.startsWith("team/") }
         .distinct()
+    return urls.map { TeamEntry(it, gender, "WT") }
 }
 
-/** slug from <a href="rider/<slug>"> */
+// ────────────────────────────────────────────────────────────────
+// Element helpers
+// ────────────────────────────────────────────────────────────────
+
 fun DocElement.riderSlug(): String? =
-    findAll("a").firstOrNull { it.attribute("href").startsWith("rider/") }
+    safe("a").firstOrNull { it.attribute("href").startsWith("rider/") }
         ?.attribute("href")?.removePrefix("rider/")
 
-/** flag code from <span class="flag xx"> */
 fun DocElement.flagCode(): String? =
-    findAll("span.flag").firstOrNull()?.classNames
+    safe("span.flag").firstOrNull()?.classNames
         ?.firstOrNull { it != "flag" }
 
 fun teamName(doc: Doc): String =
-    doc.findFirst(".page-title h1").text.substringBefore('(').trim()
+    try { doc.findFirst(".page-title h1").text.substringBefore('(').trim() }
+    catch (_: Exception) { "" }
 
-/** The extra fields that only exist on an individual rider's page. */
+// ────────────────────────────────────────────────────────────────
+// Rider-page detail extraction
+// ────────────────────────────────────────────────────────────────
+
 data class RiderDetails(
     val dateOfBirth: String,
     val placeOfBirth: String,
     val height: String,
     val weight: String,
-    val topResult: String,
-    val uciPoints: String,
+    val wins: String,
+    val topResults: List<String>,
+    val allTeams: List<String>,
 )
 
-val EMPTY_DETAILS = RiderDetails("", "", "", "", "", "")
+val EMPTY_DETAILS = RiderDetails("", "", "", "", "0", emptyList(), emptyList())
 
-/**
- * Read a single value out of the rider info block by its label.
- * The block renders as "... Date of birth: 15 July 1989 (36) Weight: 63 kg ...".
- * We grab the text between the wanted label and the next label (or end).
- */
-fun valueAfterLabel(blockText: String, label: String, nextLabels: List<String>): String {
-    val start = blockText.indexOf(label)
-    if (start < 0) return ""
-    val after = start + label.length
-    val end = nextLabels
-        .map { blockText.indexOf(it, after) }
-        .filter { it >= 0 }
-        .minOrNull() ?: blockText.length
-    return blockText.substring(after, end).trim()
-}
-
-/**
- * UCI points a rider scored in a given calendar year.
- *
- * PCS exposes a rider's season via rider/<slug>?season=<year>, and the
- * results summary on that page includes a "PCS points" and a "UCI points"
- * total. We read the number that follows the "UCI" points label.
- */
-fun getUciPointsForYear(riderSlug: String, year: Int): String {
-    val doc = fetch("rider/$riderSlug?season=$year")
-    // The points summary renders labels like "Points per specialty",
-    // "PCS points", "UCI points" with their numbers nearby. Find the
-    // "UCI" points keypair in the info/keyvalue blocks.
-    val candidates = doc.findAll("div.rdr-info-cont, ul.list, div.mt10, div.mt20")
-        .map { it.text.replace("\u00A0", " ") }
-    for (text in candidates) {
-        // Look for "... UCI points: 1234 ..." or "UCI 1234"
-        val m = Regex("UCI\\s*points?\\s*:?\\s*([0-9][0-9.,]*)", RegexOption.IGNORE_CASE)
-            .find(text)
-        if (m != null) return m.groupValues[1].replace(",", "")
-    }
-    return ""
-}
-
-/**
- * Fetch one rider page and extract date/place of birth, height, weight,
- * the single highest (first-listed) top result, and last year's UCI points.
- */
-fun getRiderDetails(riderSlug: String, uciPointsYear: Int): RiderDetails {
+fun getRiderDetails(riderSlug: String): RiderDetails {
     val doc = fetch("rider/$riderSlug")
 
-    // The info block holds the labelled personal data.
-    val infoText = (doc.findAll("div.rdr-info-cont").firstOrNull()?.text ?: "")
-        .replace("\u00A0", " ")
+    val allLi = doc.safe("ul.list li")
 
-    val labels = listOf(
-        "Date of birth:", "Nationality:", "Weight:", "Height:",
-        "Place of birth:", "Specialties", "Specialty",
-    )
+    fun findLiText(label: String): String =
+        allLi.firstOrNull { li ->
+            li.safe("div").any { div ->
+                div.classNames.contains("bold") &&
+                    div.text.trim().startsWith(label)
+            }
+        }?.text ?: ""
 
-    // Date of birth: keep "15 July 1989", drop the "( 36 )" age and ordinal suffixes.
-    val dobRaw = valueAfterLabel(infoText, "Date of birth:", labels - "Date of birth:")
-    val dateOfBirth = dobRaw.substringBefore("(")
-        .replace(Regex("(\\d+)(st|nd|rd|th)"), "$1")  // "15th" -> "15"
+    // ── Date of birth ─────────────────────────────────────────────
+    val dateOfBirth = findLiText("Date of birth")
+        .substringAfter("Date of birth:")
+        .substringBefore("(")
+        .replace(Regex("(\\d+)(st|nd|rd|th)"), "$1")
         .trim()
 
-    val weight = valueAfterLabel(infoText, "Weight:", labels - "Weight:")
-        .removeSuffix("kg").trim()
-    val height = valueAfterLabel(infoText, "Height:", labels - "Height:")
-        .removeSuffix("m").trim()
-    val placeOfBirth = valueAfterLabel(infoText, "Place of birth:", labels - "Place of birth:").trim()
+    // ── Weight & Height (same <li>) ───────────────────────────────
+    val whText = findLiText("Weight")
+    val weight = whText
+        .substringAfter("Weight:")
+        .substringBefore("kg")
+        .trim()
+    val height = whText
+        .substringAfter("Height:")
+        .substringBefore("m")
+        .trim()
 
-    // Top results: PCS lists the rider's biggest wins/results, most prestigious first.
-    // The list lives in the palmares/results sidebar; take the first entry's text.
-    val topResult = doc.findAll("ul.list.rdr-results li").firstOrNull()?.text?.trim()
-        ?: doc.findAll("div.mt20 ul.list li").firstOrNull()?.text?.trim()
-        ?: ""
+    // ── Place of birth (may be absent) ────────────────────────────
+    val placeOfBirth = findLiText("Place of birth")
+        .substringAfter("Place of birth:")
+        .trim()
 
-    val uciPoints = try {
-        getUciPointsForYear(riderSlug, uciPointsYear)
-    } catch (e: Exception) {
-        ""
-    }
+    // ── Top 3 results ─────────────────────────────────────────────
+    val topResults = doc.safe("ul.topresults li")
+        .take(3)
+        .map { it.text.trim().replace(Regex("\\s+"), " ") }
+
+    // ── Wins ──────────────────────────────────────────────────────
+    val wins = doc.safe("ul.rider-kpi li")
+        .firstOrNull { li ->
+            li.safe("div.title").any { div ->
+                div.text.trim().contains("Wins", ignoreCase = true)
+            }
+        }
+        ?.let { li -> li.safe("div.kpi").firstOrNull()?.text?.trim() }
+        ?: "0"
+
+    // ── Teams (all, deduped, in order) ────────────────────────────
+    val allTeams = doc.safe("ul.rdr-teams2 li.main")
+        .mapNotNull { li ->
+            li.safe("div.name a").firstOrNull()?.text?.trim()
+        }
+        .filter { it.isNotEmpty() }
+        .distinct()
 
     return RiderDetails(
         dateOfBirth = dateOfBirth,
         placeOfBirth = placeOfBirth,
         height = height,
         weight = weight,
-        topResult = topResult.replace(Regex("\\s+"), " "),
-        uciPoints = uciPoints,
+        wins = wins,
+        topResults = topResults,
+        allTeams = allTeams,
     )
 }
 
-/**
- * Each team page contains several hidden tab tables (div.stab.*). We read
- * the specialty, country, and age tabs and join them on the rider slug.
- */
-fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
+// ────────────────────────────────────────────────────────────────
+// Team-page scraping
+// ────────────────────────────────────────────────────────────────
+
+fun scrapeTeam(teamUrl: String, gender: String, tier: String): List<RiderRow> {
     val doc = fetch(teamUrl)
     val name = teamName(doc)
 
-    val specialty = LinkedHashMap<String, MutableList<String>>() // slug -> all specialties
-    val nationality = LinkedHashMap<String, String>() // slug -> country
-    val age = LinkedHashMap<String, String>()          // slug -> age (years)
-    val displayName = LinkedHashMap<String, String>()  // slug -> "SURNAME First"
+    val specialty = LinkedHashMap<String, MutableList<String>>()
+    val nationality = LinkedHashMap<String, String>()
+    val age = LinkedHashMap<String, String>()
+    val displayName = LinkedHashMap<String, String>()
 
     fun tableRows(stabClass: String): List<DocElement> =
-        doc.findAll("div.stab.$stabClass table.teamlist tbody tr")
+        doc.safe("div.stab.$stabClass table.teamlist tbody tr")
 
-    // Specialty tab: columns # | rider | specialty.
-    // A rider can appear in multiple specialty rows (e.g. Hills AND Oneday);
-    // collect them all, keeping order and dropping duplicates.
     for (row in tableRows("specialty")) {
         val slug = row.riderSlug() ?: continue
-        val cells = row.findAll("td")
+        val cells = row.safe("td")
         val spec = cells.lastOrNull()?.text?.trim().orEmpty()
         val list = specialty.getOrPut(slug) { mutableListOf() }
         if (spec.isNotEmpty() && spec !in list) list.add(spec)
-        displayName.putIfAbsent(slug, row.findFirst("a").text.trim())
+        displayName.putIfAbsent(slug, try { row.findFirst("a").text.trim() } catch (_: Exception) { slug })
         row.flagCode()?.let { nationality.putIfAbsent(slug, FLAG_TO_COUNTRY[it] ?: it) }
     }
 
-    // Country tab: columns # | rider | age (whole years)
     for (row in tableRows("country")) {
         val slug = row.riderSlug() ?: continue
-        val cells = row.findAll("td")
+        val cells = row.safe("td")
         cells.lastOrNull()?.text?.trim()?.let { age.putIfAbsent(slug, it) }
         row.flagCode()?.let { nationality.putIfAbsent(slug, FLAG_TO_COUNTRY[it] ?: it) }
-        displayName.putIfAbsent(slug, row.findFirst("a").text.trim())
+        displayName.putIfAbsent(slug, try { row.findFirst("a").text.trim() } catch (_: Exception) { slug })
     }
 
-    // Age tab is a fallback for age if the country tab was empty.
     for (row in tableRows("age")) {
         val slug = row.riderSlug() ?: continue
         if (age.containsKey(slug)) continue
-        val raw = row.findAll("td").lastOrNull()?.text?.trim().orEmpty()
-        age.putIfAbsent(slug, raw.substringBefore('y').trim())  // "28y + 3d" -> "28"
+        val raw = row.safe("td").lastOrNull()?.text?.trim().orEmpty()
+        age.putIfAbsent(slug, raw.substringBefore('y').trim())
     }
 
-    // Union of all slugs we saw, preserving encounter order.
     val slugs = LinkedHashSet<String>().apply {
         addAll(specialty.keys); addAll(nationality.keys); addAll(age.keys)
     }
@@ -266,6 +294,7 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
     return slugs.map { slug ->
         RiderRow(
             gender = gender,
+            teamTier = tier,
             team = name,
             slug = slug,
             name = displayName[slug] ?: slug,
@@ -275,78 +304,121 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
             placeOfBirth = "",
             height = "",
             weight = "",
-            topResult = "",
-            uciPoints = "",
+            wins = "",
+            topResults = emptyList(),
+            previousTeams = emptyList(),
             specialties = specialty[slug] ?: emptyList(),
         )
     }
 }
 
+// ────────────────────────────────────────────────────────────────
+// CSV helper
+// ────────────────────────────────────────────────────────────────
+
 fun csvCell(s: String): String =
     if (s.any { it == ',' || it == '"' || it == '\n' })
         "\"" + s.replace("\"", "\"\"") + "\"" else s
 
+// ────────────────────────────────────────────────────────────────
+// Main
+// ────────────────────────────────────────────────────────────────
+
 val season = args.firstOrNull()?.toIntOrNull() ?: 2026
-System.err.println("Scraping WorldTour teams for $season ...")
+System.err.println("Scraping WorldTour & ProTour teams for $season ...")
 
-// listing path -> gender label written to the CSV.
-// Men's and women's WorldTour are at different URLs on PCS.
-val categories = linkedMapOf(
-    "teams.php?year=$season&s=worldtour" to "M",  // men's WorldTour
-    "teams/women" to "W",                          // women's WorldTour
-)
+val allEntries = mutableListOf<TeamEntry>()
 
+// ── Men's WorldTour + ProTour ─────────────────────────────────
+val menEntries = getTeamEntries("teams.php?year=$season", "M")
+allEntries += menEntries
+val menWt = menEntries.count { it.tier == "WT" }
+val menPt = menEntries.count { it.tier == "PT" }
+System.err.println("[M] Found $menWt WorldTour teams and $menPt ProTour teams.")
+
+// ── Women's WorldTour + ProTour ───────────────────────────────
+val womenEntries = getTeamEntries("teams.php?s=women&year=$season", "W")
+allEntries += womenEntries
+val womenWt = womenEntries.count { it.tier == "WT" }
+val womenPt = womenEntries.count { it.tier == "PT" }
+System.err.println("[W] Found $womenWt WorldTour teams and $womenPt ProTour teams.")
+
+Thread.sleep(REQUEST_DELAY_MS)
+
+// ── Scrape every team ─────────────────────────────────────────
 val all = mutableListOf<RiderRow>()
-for ((listingPath, gender) in categories) {
-    val teamUrls = getTeamUrls(listingPath)
-    System.err.println("[$gender] Found ${teamUrls.size} teams.")
-    for ((i, url) in teamUrls.withIndex()) {
-        val rows = scrapeTeam(url, gender)
-        System.err.println("[$gender ${i + 1}/${teamUrls.size}] ${rows.firstOrNull()?.team ?: url} — ${rows.size} riders")
-        all += rows
-        Thread.sleep(REQUEST_DELAY_MS)
+var currentGroup = ""
+var groupIndex = 0
+var groupTotal = 0
+
+for (entry in allEntries) {
+    val group = "${entry.gender}/${entry.tier}"
+    if (group != currentGroup) {
+        currentGroup = group
+        groupIndex = 0
+        groupTotal = allEntries.count { "${it.gender}/${it.tier}" == group }
     }
+    groupIndex++
+
+    val rows = scrapeTeam(entry.url, entry.gender, entry.tier)
+    System.err.println("[$group $groupIndex/$groupTotal] ${rows.firstOrNull()?.team ?: entry.url} — ${rows.size} riders")
+    all += rows
+    Thread.sleep(REQUEST_DELAY_MS)
 }
 
-// Second pass: visit each rider's own page for date/place of birth, height,
-// weight, their single highest top result, and last year's UCI points.
-// This is the slow part — one request per rider (two, with the points year) —
-// so the polite delay matters most here.
-val uciPointsYear = season - 1   // "last year" relative to the season being scraped
-System.err.println("Fetching individual rider details for ${all.size} riders (UCI points year $uciPointsYear) ...")
+// ── Second pass: individual rider pages ───────────────────────
+System.err.println("Fetching individual rider details for ${all.size} riders ...")
 val detailed = all.mapIndexed { idx, r ->
     val details = try {
-        getRiderDetails(r.slug, uciPointsYear)
+        getRiderDetails(r.slug)
     } catch (e: Exception) {
         System.err.println("  ! ${r.slug}: ${e.message}")
         EMPTY_DETAILS
     }
     if ((idx + 1) % 25 == 0) System.err.println("  ... ${idx + 1}/${all.size}")
     Thread.sleep(REQUEST_DELAY_MS)
+
+    val currentTeamLower = r.team.lowercase()
+    val previousTeams = details.allTeams
+        .filter { it.lowercase() != currentTeamLower }
+
     r.copy(
         dateOfBirth = details.dateOfBirth,
         placeOfBirth = details.placeOfBirth,
         height = details.height,
         weight = details.weight,
-        topResult = details.topResult,
-        uciPoints = details.uciPoints,
+        wins = details.wins,
+        topResults = details.topResults,
+        previousTeams = previousTeams,
     )
 }
 
+// ── Write CSV ─────────────────────────────────────────────────
 val out = File("worldtour_riders_$season.csv")
-// Widest rider determines how many specialty columns we need.
+
 val maxSpecialties = (detailed.maxOfOrNull { it.specialties.size } ?: 0).coerceAtLeast(1)
+val maxPrevTeams = (detailed.maxOfOrNull { it.previousTeams.size } ?: 0).coerceAtLeast(1)
+
 out.bufferedWriter().use { w ->
     val specialtyHeaders = (1..maxSpecialties).joinToString(",") { "Specialty $it" }
-    w.write("Gender,Team,Rider,Nationality,Age,Date of birth,Place of birth,Height (m),Weight (kg),Top result,UCI Points,$specialtyHeaders\n")
-    detailed.sortedWith(compareBy({ it.gender }, { it.team }, { it.name })).forEach { r ->
-        // Pad the specialty list out to maxSpecialties so every row has the same columns.
+    val prevTeamHeaders = (1..maxPrevTeams).joinToString(",") { "Previous team $it" }
+
+    w.write("Gender,Team tier,Team,Rider,Nationality,Age,Date of birth,Place of birth," +
+            "Height (m),Weight (kg),Wins," +
+            "Top result 1,Top result 2,Top result 3," +
+            "$prevTeamHeaders,$specialtyHeaders\n")
+
+    detailed.sortedWith(compareBy({ it.gender }, { it.teamTier }, { it.team }, { it.name })).forEach { r ->
+        val topCells = (0 until 3).map { r.topResults.getOrElse(it) { "" } }
+        val prevCells = (0 until maxPrevTeams).map { r.previousTeams.getOrElse(it) { "" } }
         val specCells = (0 until maxSpecialties).map { r.specialties.getOrElse(it) { "" } }
+
         w.write((listOf(
-            r.gender, r.team, r.name, r.nationality, r.age,
-            r.dateOfBirth, r.placeOfBirth, r.height, r.weight, r.topResult, r.uciPoints,
-        ) + specCells).joinToString(",") { csvCell(it) })
+            r.gender, r.teamTier, r.team, r.name, r.nationality, r.age,
+            r.dateOfBirth, r.placeOfBirth, r.height, r.weight, r.wins,
+        ) + topCells + prevCells + specCells).joinToString(",") { csvCell(it) })
         w.write("\n")
     }
 }
-System.err.println("Wrote ${detailed.size} riders to ${out.name} (up to $maxSpecialties specialties per rider)")
+System.err.println("Wrote ${detailed.size} riders to ${out.name} " +
+    "(up to $maxSpecialties specialties, $maxPrevTeams previous teams per rider)")
