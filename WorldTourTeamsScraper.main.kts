@@ -19,19 +19,15 @@
  */
 
 @file:DependsOn("it.skrape:skrapeit:1.2.2")
-@file:DependsOn("io.ktor:ktor-client-cio-jvm:2.3.12")
 
 import it.skrape.core.htmlDocument
 import it.skrape.selects.Doc
 import it.skrape.selects.DocElement
-import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.request.get
-import io.ktor.client.request.header
-import io.ktor.client.statement.bodyAsText
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import java.io.File
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 
 const val PCS_URL = "https://www.procyclingstats.com/"
 
@@ -68,16 +64,21 @@ data class RiderRow(
     val specialty: String,
 )
 
-val client = HttpClient(CIO)
+val client: HttpClient = HttpClient.newBuilder().build()
 
-suspend fun fetch(path: String): Doc {
+fun fetch(path: String): Doc {
     val url = PCS_URL.trimEnd('/') + "/" + path.trimStart('/')
-    val body = client.get(url) { header("User-Agent", USER_AGENT) }.bodyAsText()
+    val request = HttpRequest.newBuilder()
+        .uri(URI.create(url))
+        .header("User-Agent", USER_AGENT)
+        .GET()
+        .build()
+    val body = client.send(request, HttpResponse.BodyHandlers.ofString()).body()
     return htmlDocument(body)
 }
 
 /** WorldTour team page URLs for a season, e.g. team/xds-astana-team-2026. */
-suspend fun getTeamUrls(season: Int): List<String> {
+fun getTeamUrls(season: Int): List<String> {
     val doc = fetch("teams.php?year=$season&s=worldtour")
     return doc.findAll(".list.fs14.columns2.mob_columns1 a")
         .map { it.attribute("href") }
@@ -102,7 +103,7 @@ fun teamName(doc: Doc): String =
  * Each team page contains several hidden tab tables (div.stab.*). We read
  * the specialty, country, and age tabs and join them on the rider slug.
  */
-suspend fun scrapeTeam(teamUrl: String): List<RiderRow> {
+fun scrapeTeam(teamUrl: String): List<RiderRow> {
     val doc = fetch(teamUrl)
     val name = teamName(doc)
 
@@ -161,30 +162,27 @@ fun csvCell(s: String): String =
     if (s.any { it == ',' || it == '"' || it == '\n' })
         "\"" + s.replace("\"", "\"\"") + "\"" else s
 
-runBlocking {
-    val season = args.firstOrNull()?.toIntOrNull() ?: 2026
-    System.err.println("Scraping WorldTour teams for $season ...")
+val season = args.firstOrNull()?.toIntOrNull() ?: 2026
+System.err.println("Scraping WorldTour teams for $season ...")
 
-    val teamUrls = getTeamUrls(season)
-    System.err.println("Found ${teamUrls.size} teams.")
+val teamUrls = getTeamUrls(season)
+System.err.println("Found ${teamUrls.size} teams.")
 
-    val all = mutableListOf<RiderRow>()
-    for ((i, url) in teamUrls.withIndex()) {
-        val rows = scrapeTeam(url)
-        System.err.println("[${i + 1}/${teamUrls.size}] ${rows.firstOrNull()?.team ?: url} — ${rows.size} riders")
-        all += rows
-        delay(REQUEST_DELAY_MS)
-    }
-
-    val out = File("worldtour_riders_$season.csv")
-    out.bufferedWriter().use { w ->
-        w.write("Team,Rider,Nationality,Age,Specialty\n")
-        all.sortedWith(compareBy({ it.team }, { it.name })).forEach { r ->
-            w.write(listOf(r.team, r.name, r.nationality, r.age, r.specialty)
-                .joinToString(",") { csvCell(it) })
-            w.write("\n")
-        }
-    }
-    System.err.println("Wrote ${all.size} riders to ${out.name}")
-    client.close()
+val all = mutableListOf<RiderRow>()
+for ((i, url) in teamUrls.withIndex()) {
+    val rows = scrapeTeam(url)
+    System.err.println("[${i + 1}/${teamUrls.size}] ${rows.firstOrNull()?.team ?: url} — ${rows.size} riders")
+    all += rows
+    Thread.sleep(REQUEST_DELAY_MS)
 }
+
+val out = File("worldtour_riders_$season.csv")
+out.bufferedWriter().use { w ->
+    w.write("Team,Rider,Nationality,Age,Specialty\n")
+    all.sortedWith(compareBy({ it.team }, { it.name })).forEach { r ->
+        w.write(listOf(r.team, r.name, r.nationality, r.age, r.specialty)
+            .joinToString(",") { csvCell(it) })
+        w.write("\n")
+    }
+}
+System.err.println("Wrote ${all.size} riders to ${out.name}")
