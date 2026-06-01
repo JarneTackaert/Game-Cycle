@@ -57,6 +57,7 @@ val FLAG_TO_COUNTRY = mapOf(
 )
 
 data class RiderRow(
+    val gender: String,
     val team: String,
     val name: String,
     val nationality: String,
@@ -77,9 +78,13 @@ fun fetch(path: String): Doc {
     return htmlDocument(body)
 }
 
-/** WorldTour team page URLs for a season, e.g. team/xds-astana-team-2026. */
-fun getTeamUrls(season: Int): List<String> {
-    val doc = fetch("teams.php?year=$season&s=worldtour")
+/**
+ * WorldTour team page URLs for a season and category.
+ * category "worldtour" = men's WorldTour, "women" = women's WorldTour (women elite).
+ * e.g. team/xds-astana-team-2026
+ */
+fun getTeamUrls(season: Int, category: String): List<String> {
+    val doc = fetch("teams.php?year=$season&s=$category")
     return doc.findAll(".list.fs14.columns2.mob_columns1 a")
         .map { it.attribute("href") }
         .filter { it.startsWith("team/") }
@@ -103,7 +108,7 @@ fun teamName(doc: Doc): String =
  * Each team page contains several hidden tab tables (div.stab.*). We read
  * the specialty, country, and age tabs and join them on the rider slug.
  */
-fun scrapeTeam(teamUrl: String): List<RiderRow> {
+fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
     val doc = fetch(teamUrl)
     val name = teamName(doc)
 
@@ -149,6 +154,7 @@ fun scrapeTeam(teamUrl: String): List<RiderRow> {
 
     return slugs.map { slug ->
         RiderRow(
+            gender = gender,
             team = name,
             name = displayName[slug] ?: slug,
             nationality = nationality[slug] ?: "",
@@ -165,22 +171,29 @@ fun csvCell(s: String): String =
 val season = args.firstOrNull()?.toIntOrNull() ?: 2026
 System.err.println("Scraping WorldTour teams for $season ...")
 
-val teamUrls = getTeamUrls(season)
-System.err.println("Found ${teamUrls.size} teams.")
+// category code -> gender label written to the CSV
+val categories = linkedMapOf(
+    "worldtour" to "M",  // men's WorldTour
+    "we" to "W",         // women's WorldTour (women elite)
+)
 
 val all = mutableListOf<RiderRow>()
-for ((i, url) in teamUrls.withIndex()) {
-    val rows = scrapeTeam(url)
-    System.err.println("[${i + 1}/${teamUrls.size}] ${rows.firstOrNull()?.team ?: url} — ${rows.size} riders")
-    all += rows
-    Thread.sleep(REQUEST_DELAY_MS)
+for ((category, gender) in categories) {
+    val teamUrls = getTeamUrls(season, category)
+    System.err.println("[$gender] Found ${teamUrls.size} teams.")
+    for ((i, url) in teamUrls.withIndex()) {
+        val rows = scrapeTeam(url, gender)
+        System.err.println("[$gender ${i + 1}/${teamUrls.size}] ${rows.firstOrNull()?.team ?: url} — ${rows.size} riders")
+        all += rows
+        Thread.sleep(REQUEST_DELAY_MS)
+    }
 }
 
 val out = File("worldtour_riders_$season.csv")
 out.bufferedWriter().use { w ->
-    w.write("Team,Rider,Nationality,Age,Specialty\n")
-    all.sortedWith(compareBy({ it.team }, { it.name })).forEach { r ->
-        w.write(listOf(r.team, r.name, r.nationality, r.age, r.specialty)
+    w.write("Gender,Team,Rider,Nationality,Age,Specialty\n")
+    all.sortedWith(compareBy({ it.gender }, { it.team }, { it.name })).forEach { r ->
+        w.write(listOf(r.gender, r.team, r.name, r.nationality, r.age, r.specialty)
             .joinToString(",") { csvCell(it) })
         w.write("\n")
     }
