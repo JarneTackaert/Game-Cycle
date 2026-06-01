@@ -1,0 +1,40 @@
+name: Scrape WorldTour riders
+
+# Lets you run it manually from the Actions tab
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season year to scrape"
+        required: true
+        default: "2026"
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Kotlin
+        run: |
+          curl -s "https://get.sdkman.io" | bash
+          source "$HOME/.sdkman/bin/sdkman-init.sh"
+          sdk install kotlin
+
+      - name: Run the scraper
+        run: |
+          source "$HOME/.sdkman/bin/sdkman-init.sh"
+          kotlin WorldTourTeamsScraper.main.kts "${{ github.event.inputs.season }}"
+
+      - name: Save the CSV as a downloadable file
+        uses: actions/upload-artifact@v4
+        with:
+          name: worldtour-riders
+          path: worldtour_riders_*.csv
