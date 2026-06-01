@@ -3,10 +3,10 @@
 /**
  * WorldTourTeamsScraper.main.kts
  *
- * Scrapes every UCI WorldTour and ProTour team for a given season.
- * For each team, extracts every rider's: name, nationality, age, specialty,
- * date/place of birth, height, weight, career wins, top 3 results,
- * and previous teams.
+ * Scrapes every UCI WorldTour and ProTour team (men + women) for a given
+ * season. For each team, extracts every rider's: name, nationality, age,
+ * specialty, date/place of birth, height, weight, career wins, top 3
+ * results, and previous teams.
  *
  * Run:
  *   kotlin WorldTourTeamsScraper.main.kts 2026
@@ -48,7 +48,6 @@ val FLAG_TO_COUNTRY = mapOf(
     "fi" to "Finland", "se" to "Sweden", "lt" to "Lithuania",
 )
 
-/** A team URL with its gender and tier classification. */
 data class TeamEntry(val url: String, val gender: String, val tier: String)
 
 data class RiderRow(
@@ -99,19 +98,23 @@ fun DocElement.safe(css: String): List<DocElement> =
 /**
  * Parse a team listing page and return team URLs tagged with gender + tier.
  *
- * The men's page (teams.php?year=YYYY) contains two sections separated
- * by <h4> headings, each followed by a <ul class="list lh18 …">:
- *   <h4>UCI WorldTeams</h4>  → first  ul.lh18  → tier "WT"
- *   <h4>UCI ProTeams</h4>    → second ul.lh18  → tier "PT"
+ * Both men's and women's pages have the same layout:
+ *   <h4>UCI (Women's) WorldTeams</h4>
+ *   <ul class="list fs14 columns2 mob_columns1">…team links…</ul>
+ *   <ul class="list horizontal">…jersey images (skip)…</ul>
+ *   <h4>UCI (Women's) ProTeams</h4>
+ *   <ul class="list fs14 columns2 mob_columns1">…team links…</ul>
  *
- * When only one list is found (e.g. women's page), all teams get [defaultTier].
+ * Key difference: men's lists additionally have the `lh18` class, women's
+ * don't. We use `ul.columns2` which matches both. The jersey-image lists
+ * use `ul.list.horizontal` (no `columns2`) so they're excluded.
  */
-fun getTeamEntries(listingPath: String, gender: String, defaultTier: String): List<TeamEntry> {
+fun getTeamEntries(listingPath: String, gender: String): List<TeamEntry> {
     val doc = fetch(listingPath)
 
-    // ul.lh18 targets only the team-name lists, not the jersey-image lists
-    // (those use class "list horizontal" without lh18).
-    val teamLists = doc.safe("ul.lh18")
+    // ul.columns2 targets only the team-name lists, not the jersey-image
+    // lists (those use "list horizontal" without columns2).
+    val teamLists = doc.safe("ul.columns2")
 
     if (teamLists.size >= 2) {
         val results = mutableListOf<TeamEntry>()
@@ -133,12 +136,12 @@ fun getTeamEntries(listingPath: String, gender: String, defaultTier: String): Li
         return results
     }
 
-    // Fallback: single list or different page structure
-    val urls = doc.safe(".list.fs14.columns2.mob_columns1 a")
+    // Fallback: single list — treat all as WT
+    val urls = (teamLists.firstOrNull()?.safe("a") ?: doc.safe(".list.fs14.columns2.mob_columns1 a"))
         .map { it.attribute("href") }
         .filter { it.startsWith("team/") }
         .distinct()
-    return urls.map { TeamEntry(it, gender, defaultTier) }
+    return urls.map { TeamEntry(it, gender, "WT") }
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -225,7 +228,6 @@ fun getRiderDetails(riderSlug: String): RiderDetails {
         ?: "0"
 
     // ── Teams (all, deduped, in order) ────────────────────────────
-    // Target only li.main to skip the mobile-only combiLine duplicates.
     val allTeams = doc.safe("ul.rdr-teams2 li.main")
         .mapNotNull { li ->
             li.safe("div.name a").firstOrNull()?.text?.trim()
@@ -327,28 +329,23 @@ System.err.println("Scraping WorldTour & ProTour teams for $season ...")
 
 val allEntries = mutableListOf<TeamEntry>()
 
-// ── Men's WorldTour + ProTour (both on the same page) ─────────
-val menEntries = getTeamEntries("teams.php?year=$season", "M", "WT")
+// ── Men's WorldTour + ProTour ─────────────────────────────────
+val menEntries = getTeamEntries("teams.php?year=$season", "M")
 allEntries += menEntries
 val menWt = menEntries.count { it.tier == "WT" }
 val menPt = menEntries.count { it.tier == "PT" }
 System.err.println("[M] Found $menWt WorldTour teams and $menPt ProTour teams.")
 
-// ── Women's WorldTour ─────────────────────────────────────────
-val womenEntries = getTeamEntries("teams/women", "W", "WT")
+// ── Women's WorldTour + ProTour ───────────────────────────────
+val womenEntries = getTeamEntries("teams.php?s=women&year=$season", "W")
 allEntries += womenEntries
 val womenWt = womenEntries.count { it.tier == "WT" }
 val womenPt = womenEntries.count { it.tier == "PT" }
-if (womenPt > 0) {
-    System.err.println("[W] Found $womenWt WorldTour teams and $womenPt ProTour teams.")
-} else {
-    System.err.println("[W] Found $womenWt WorldTour teams.")
-}
+System.err.println("[W] Found $womenWt WorldTour teams and $womenPt ProTour teams.")
 
 Thread.sleep(REQUEST_DELAY_MS)
 
 // ── Scrape every team ─────────────────────────────────────────
-// Track progress per gender+tier group for clear logging.
 val all = mutableListOf<RiderRow>()
 var currentGroup = ""
 var groupIndex = 0
@@ -381,7 +378,6 @@ val detailed = all.mapIndexed { idx, r ->
     if ((idx + 1) % 25 == 0) System.err.println("  ... ${idx + 1}/${all.size}")
     Thread.sleep(REQUEST_DELAY_MS)
 
-    // Previous teams = all teams from the rider page, minus the current team.
     val currentTeamLower = r.team.lowercase()
     val previousTeams = details.allTeams
         .filter { it.lowercase() != currentTeamLower }
