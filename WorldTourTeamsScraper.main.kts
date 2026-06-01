@@ -34,11 +34,15 @@ import java.net.http.HttpResponse
 
 val PCS_URL = "https://www.procyclingstats.com/"
 
+// Be polite: PCS does basic bot detection. A real UA + a delay between
+// requests keeps you under the radar and is the neighbourly thing to do.
 val USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 val REQUEST_DELAY_MS = 1500L
 
+// Flag code -> country name. Extend as needed; unknown codes fall back to
+// the raw 2-letter code so nothing is silently lost.
 val FLAG_TO_COUNTRY = mapOf(
     "it" to "Italy", "fr" to "France", "es" to "Spain", "de" to "Germany",
     "nl" to "Netherlands", "be" to "Belgium", "co" to "Colombia", "ec" to "Ecuador",
@@ -84,24 +88,53 @@ fun fetch(path: String): Doc {
     return htmlDocument(body)
 }
 
+// ────────────────────────────────────────────────────────────────
+// skrape{it} safe wrappers
+// ────────────────────────────────────────────────────────────────
+// skrape{it}'s findAll() throws when zero elements match instead of
+// returning an empty list. These extension functions catch that and
+// return emptyList() so callers can safely use .firstOrNull(), .any(), etc.
+
+fun Doc.safe(css: String): List<DocElement> =
+    try { findAll(css) } catch (_: Exception) { emptyList() }
+
+fun DocElement.safe(css: String): List<DocElement> =
+    try { findAll(css) } catch (_: Exception) { emptyList() }
+
+// ────────────────────────────────────────────────────────────────
+// Team listing
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * WorldTour team page URLs from a given listing path.
+ * Men's WorldTour and women's WorldTour live at different URLs on PCS,
+ * so we pass the full listing path rather than a query-param category.
+ */
 fun getTeamUrls(listingPath: String): List<String> {
     val doc = fetch(listingPath)
-    return doc.findAll(".list.fs14.columns2.mob_columns1 a")
+    return doc.safe(".list.fs14.columns2.mob_columns1 a")
         .map { it.attribute("href") }
         .filter { it.startsWith("team/") }
         .distinct()
 }
 
+// ────────────────────────────────────────────────────────────────
+// Element helpers
+// ────────────────────────────────────────────────────────────────
+
+/** slug from <a href="rider/<slug>"> */
 fun DocElement.riderSlug(): String? =
-    findAll("a").firstOrNull { it.attribute("href").startsWith("rider/") }
+    safe("a").firstOrNull { it.attribute("href").startsWith("rider/") }
         ?.attribute("href")?.removePrefix("rider/")
 
+/** flag code from <span class="flag xx"> */
 fun DocElement.flagCode(): String? =
-    findAll("span.flag").firstOrNull()?.classNames
+    safe("span.flag").firstOrNull()?.classNames
         ?.firstOrNull { it != "flag" }
 
 fun teamName(doc: Doc): String =
-    doc.findFirst(".page-title h1").text.substringBefore('(').trim()
+    try { doc.findFirst(".page-title h1").text.substringBefore('(').trim() }
+    catch (_: Exception) { "" }
 
 // ────────────────────────────────────────────────────────────────
 // Rider-page detail extraction
@@ -121,42 +154,40 @@ val EMPTY_DETAILS = RiderDetails("", "", "", "", "0", "")
 /**
  * Fetch one rider page and extract personal info, career wins, and top result.
  *
- * The rider info box lives inside `div.borderbox.left.w65`.  Each field is
- * rendered as a `<ul class="list"><li>` with a `<div class="bold">Label:</div>`
- * followed by value divs.  We find the right `<li>` by scanning for the label
- * text and then parse the combined `.text` of that `<li>`.
- *
- * Wins come from the `<ul class="rider-kpi">` block (the "Key statistics"
- * section) — specifically the `<li>` whose title link says "Wins".
- *
- * Top result comes from the first entry in `<ul class="list topresults">`.
+ * Labels are rendered as <div class="bold mr5">Label:</div> inside <ul class="list"><li>.
+ * Not every <li> on the page has such a label, so every inner findAll is wrapped
+ * in the safe() helper to avoid the zero-match exception.
  */
 fun getRiderDetails(riderSlug: String): RiderDetails {
     val doc = fetch("rider/$riderSlug")
 
-    // ── Personal info fields ──────────────────────────────────────
-    // Collect every <li> inside a <ul class="list"> within the info box.
-    // We scope to div.borderbox.left.w65 to avoid noise from other lists
-    // on the page, but fall back to all ul.list li if the selector misses.
-    val infoLi = doc.findAll("div.borderbox.left.w65 ul.list li")
-        .ifEmpty { doc.findAll("ul.list li") }
+    // Every <li> inside any <ul class="list"> on the page.
+    val allLi = doc.safe("ul.list li")
 
-    /** Return the full text of the first <li> whose bold label starts with [label]. */
+    /**
+     * Find the first <li> whose child <div class="bold …"> text starts
+     * with [label], and return that <li>'s full .text.
+     * Returns "" when no matching <li> exists (e.g. "Place of birth" is
+     * absent on some rider pages).
+     */
     fun findLiText(label: String): String =
-        infoLi.firstOrNull { li ->
-            li.findAll("div.bold").any { it.text.trim().startsWith(label) }
+        allLi.firstOrNull { li ->
+            li.safe("div").any { div ->
+                div.classNames.contains("bold") &&
+                    div.text.trim().startsWith(label)
+            }
         }?.text ?: ""
 
-    // Date of birth
-    // Text looks like: "Date of birth: 27th November 2003 ( 22 )"
+    // ── Date of birth ─────────────────────────────────────────────
+    // Text: "Date of birth: 28th June 2004 ( 21 )"
     val dateOfBirth = findLiText("Date of birth")
         .substringAfter("Date of birth:")
-        .substringBefore("(")                                   // drop "( 22 )"
-        .replace(Regex("(\\d+)(st|nd|rd|th)"), "$1")            // "27th" → "27"
+        .substringBefore("(")                                   // drop "( 21 )"
+        .replace(Regex("(\\d+)(st|nd|rd|th)"), "$1")            // "28th" -> "28"
         .trim()
 
-    // Weight & Height share the same <li>:
-    // "Weight: 64 kg Height: 1.80 m"
+    // ── Weight & Height (same <li>) ───────────────────────────────
+    // Text: "Weight: 56 kg Height: 1.73 m"
     val whText = findLiText("Weight")
     val weight = whText
         .substringAfter("Weight:")
@@ -167,29 +198,29 @@ fun getRiderDetails(riderSlug: String): RiderDetails {
         .substringBefore("m")
         .trim()
 
-    // Place of birth
+    // ── Place of birth (may be absent) ────────────────────────────
     val placeOfBirth = findLiText("Place of birth")
         .substringAfter("Place of birth:")
         .trim()
 
     // ── Top result ────────────────────────────────────────────────
     // The "Top results" sidebar lists the rider's biggest results,
-    // most prestigious first.  We take the first <li>'s text.
-    val topResult = doc.findAll("ul.topresults li")
+    // most prestigious first. We take the first <li>'s text.
+    val topResult = doc.safe("ul.topresults li")
         .firstOrNull()?.text?.trim()?.replace(Regex("\\s+"), " ")
         ?: ""
 
     // ── Wins ──────────────────────────────────────────────────────
     // "Key statistics" block: <ul class="rider-kpi">
     //   <li><div class="kpi">26</div>
-    //        <div class="title"><a href="…/wins">Wins</a></div>…</li>
-    val wins = doc.findAll("ul.rider-kpi li")
+    //        <div class="title"><a …>Wins</a></div>…</li>
+    val wins = doc.safe("ul.rider-kpi li")
         .firstOrNull { li ->
-            li.findAll("div.title a").any {
-                it.text.trim().equals("Wins", ignoreCase = true)
+            li.safe("div.title").any { div ->
+                div.text.trim().contains("Wins", ignoreCase = true)
             }
         }
-        ?.findAll("div.kpi")?.firstOrNull()?.text?.trim()
+        ?.let { li -> li.safe("div.kpi").firstOrNull()?.text?.trim() }
         ?: "0"
 
     return RiderDetails(
@@ -203,46 +234,56 @@ fun getRiderDetails(riderSlug: String): RiderDetails {
 }
 
 // ────────────────────────────────────────────────────────────────
-// Team-page scraping (unchanged logic)
+// Team-page scraping
 // ────────────────────────────────────────────────────────────────
 
+/**
+ * Each team page contains several hidden tab tables (div.stab.*). We read
+ * the specialty, country, and age tabs and join them on the rider slug.
+ */
 fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
     val doc = fetch(teamUrl)
     val name = teamName(doc)
 
-    val specialty = LinkedHashMap<String, MutableList<String>>()
-    val nationality = LinkedHashMap<String, String>()
-    val age = LinkedHashMap<String, String>()
-    val displayName = LinkedHashMap<String, String>()
+    val specialty = LinkedHashMap<String, MutableList<String>>() // slug -> all specialties
+    val nationality = LinkedHashMap<String, String>()            // slug -> country
+    val age = LinkedHashMap<String, String>()                    // slug -> age (years)
+    val displayName = LinkedHashMap<String, String>()            // slug -> "SURNAME First"
 
     fun tableRows(stabClass: String): List<DocElement> =
-        doc.findAll("div.stab.$stabClass table.teamlist tbody tr")
+        doc.safe("div.stab.$stabClass table.teamlist tbody tr")
 
+    // Specialty tab: columns # | rider | specialty.
+    // A rider can appear in multiple specialty rows (e.g. Hills AND Oneday);
+    // collect them all, keeping order and dropping duplicates.
     for (row in tableRows("specialty")) {
         val slug = row.riderSlug() ?: continue
-        val cells = row.findAll("td")
+        val cells = row.safe("td")
         val spec = cells.lastOrNull()?.text?.trim().orEmpty()
         val list = specialty.getOrPut(slug) { mutableListOf() }
         if (spec.isNotEmpty() && spec !in list) list.add(spec)
-        displayName.putIfAbsent(slug, row.findFirst("a").text.trim())
+        displayName.putIfAbsent(slug, try { row.findFirst("a").text.trim() } catch (_: Exception) { slug })
         row.flagCode()?.let { nationality.putIfAbsent(slug, FLAG_TO_COUNTRY[it] ?: it) }
     }
 
+    // Country tab: columns # | rider | country flag
     for (row in tableRows("country")) {
         val slug = row.riderSlug() ?: continue
-        val cells = row.findAll("td")
+        val cells = row.safe("td")
         cells.lastOrNull()?.text?.trim()?.let { age.putIfAbsent(slug, it) }
         row.flagCode()?.let { nationality.putIfAbsent(slug, FLAG_TO_COUNTRY[it] ?: it) }
-        displayName.putIfAbsent(slug, row.findFirst("a").text.trim())
+        displayName.putIfAbsent(slug, try { row.findFirst("a").text.trim() } catch (_: Exception) { slug })
     }
 
+    // Age tab is a fallback for age if the country tab was empty.
     for (row in tableRows("age")) {
         val slug = row.riderSlug() ?: continue
         if (age.containsKey(slug)) continue
-        val raw = row.findAll("td").lastOrNull()?.text?.trim().orEmpty()
-        age.putIfAbsent(slug, raw.substringBefore('y').trim())
+        val raw = row.safe("td").lastOrNull()?.text?.trim().orEmpty()
+        age.putIfAbsent(slug, raw.substringBefore('y').trim())  // "28y + 3d" -> "28"
     }
 
+    // Union of all slugs we saw, preserving encounter order.
     val slugs = LinkedHashSet<String>().apply {
         addAll(specialty.keys); addAll(nationality.keys); addAll(age.keys)
     }
@@ -266,6 +307,10 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
     }
 }
 
+// ────────────────────────────────────────────────────────────────
+// CSV helper
+// ────────────────────────────────────────────────────────────────
+
 fun csvCell(s: String): String =
     if (s.any { it == ',' || it == '"' || it == '\n' })
         "\"" + s.replace("\"", "\"\"") + "\"" else s
@@ -277,9 +322,11 @@ fun csvCell(s: String): String =
 val season = args.firstOrNull()?.toIntOrNull() ?: 2026
 System.err.println("Scraping WorldTour teams for $season ...")
 
+// listing path -> gender label written to the CSV.
+// Men's and women's WorldTour are at different URLs on PCS.
 val categories = linkedMapOf(
-    "teams.php?year=$season&s=worldtour" to "M",
-    "teams/women" to "W",
+    "teams.php?year=$season&s=worldtour" to "M",  // men's WorldTour
+    "teams/women" to "W",                          // women's WorldTour
 )
 
 val all = mutableListOf<RiderRow>()
@@ -295,7 +342,8 @@ for ((listingPath, gender) in categories) {
 }
 
 // Second pass: visit each rider's own page for date/place of birth,
-// height, weight, career wins, and top result.
+// height, weight, career wins, and top result. This is the slow part — one
+// request per rider — so the polite delay matters most here.
 System.err.println("Fetching individual rider details for ${all.size} riders ...")
 val detailed = all.mapIndexed { idx, r ->
     val details = try {
@@ -317,11 +365,13 @@ val detailed = all.mapIndexed { idx, r ->
 }
 
 val out = File("worldtour_riders_$season.csv")
+// Widest rider determines how many specialty columns we need.
 val maxSpecialties = (detailed.maxOfOrNull { it.specialties.size } ?: 0).coerceAtLeast(1)
 out.bufferedWriter().use { w ->
     val specialtyHeaders = (1..maxSpecialties).joinToString(",") { "Specialty $it" }
     w.write("Gender,Team,Rider,Nationality,Age,Date of birth,Place of birth,Height (m),Weight (kg),Wins,Top result,$specialtyHeaders\n")
     detailed.sortedWith(compareBy({ it.gender }, { it.team }, { it.name })).forEach { r ->
+        // Pad the specialty list out to maxSpecialties so every row has the same columns.
         val specCells = (0 until maxSpecialties).map { r.specialties.getOrElse(it) { "" } }
         w.write((listOf(
             r.gender, r.team, r.name, r.nationality, r.age,
