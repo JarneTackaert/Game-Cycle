@@ -29,14 +29,14 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 
-const val PCS_URL = "https://www.procyclingstats.com/"
+val PCS_URL = "https://www.procyclingstats.com/"
 
 // Be polite: PCS does basic bot detection. A real UA + a delay between
 // requests keeps you under the radar and is the neighbourly thing to do.
-const val USER_AGENT =
+val USER_AGENT =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-const val REQUEST_DELAY_MS = 1500L
+val REQUEST_DELAY_MS = 1500L
 
 // Flag code -> country name. Extend as needed; unknown codes fall back to
 // the raw 2-letter code so nothing is silently lost.
