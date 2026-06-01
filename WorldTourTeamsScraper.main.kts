@@ -10,7 +10,7 @@
  * so NO per-rider page fetches are needed (~18 requests total, not 500+).
  *
  * A second pass visits each rider page to collect date/place of birth,
- * height, weight, career wins, and top result.
+ * height, weight, career wins, top 3 results, and previous teams.
  *
  * Run:
  *   kotlin WorldTourTeamsScraper.main.kts 2026
@@ -71,7 +71,8 @@ data class RiderRow(
     val height: String,
     val weight: String,
     val wins: String,
-    val topResult: String,
+    val topResults: List<String>,
+    val previousTeams: List<String>,
     val specialties: List<String>,
 )
 
@@ -122,7 +123,7 @@ fun getTeamUrls(listingPath: String): List<String> {
 // Element helpers
 // ────────────────────────────────────────────────────────────────
 
-/** slug from <a href="rider/<slug>"> */
+/** slug from rider/<slug> */
 fun DocElement.riderSlug(): String? =
     safe("a").firstOrNull { it.attribute("href").startsWith("rider/") }
         ?.attribute("href")?.removePrefix("rider/")
@@ -146,17 +147,20 @@ data class RiderDetails(
     val height: String,
     val weight: String,
     val wins: String,
-    val topResult: String,
+    val topResults: List<String>,
+    val allTeams: List<String>,
 )
 
-val EMPTY_DETAILS = RiderDetails("", "", "", "", "0", "")
+val EMPTY_DETAILS = RiderDetails("", "", "", "", "0", emptyList(), emptyList())
 
 /**
- * Fetch one rider page and extract personal info, career wins, and top result.
+ * Fetch one rider page and extract personal info, career wins, top 3
+ * results, and all team names (deduped, preserving order).
  *
- * Labels are rendered as <div class="bold mr5">Label:</div> inside <ul class="list"><li>.
- * Not every <li> on the page has such a label, so every inner findAll is wrapped
- * in the safe() helper to avoid the zero-match exception.
+ * Labels are rendered as <div class="bold mr5">Label:</div> inside
+ * <ul class="list"><li>. Not every <li> on the page has such a label,
+ * so every inner findAll is wrapped in the safe() helper to avoid the
+ * zero-match exception.
  */
 fun getRiderDetails(riderSlug: String): RiderDetails {
     val doc = fetch("rider/$riderSlug")
@@ -167,8 +171,7 @@ fun getRiderDetails(riderSlug: String): RiderDetails {
     /**
      * Find the first <li> whose child <div class="bold …"> text starts
      * with [label], and return that <li>'s full .text.
-     * Returns "" when no matching <li> exists (e.g. "Place of birth" is
-     * absent on some rider pages).
+     * Returns "" when no matching <li> exists.
      */
     fun findLiText(label: String): String =
         allLi.firstOrNull { li ->
@@ -182,8 +185,8 @@ fun getRiderDetails(riderSlug: String): RiderDetails {
     // Text: "Date of birth: 28th June 2004 ( 21 )"
     val dateOfBirth = findLiText("Date of birth")
         .substringAfter("Date of birth:")
-        .substringBefore("(")                                   // drop "( 21 )"
-        .replace(Regex("(\\d+)(st|nd|rd|th)"), "$1")            // "28th" -> "28"
+        .substringBefore("(")
+        .replace(Regex("(\\d+)(st|nd|rd|th)"), "$1")
         .trim()
 
     // ── Weight & Height (same <li>) ───────────────────────────────
@@ -203,17 +206,15 @@ fun getRiderDetails(riderSlug: String): RiderDetails {
         .substringAfter("Place of birth:")
         .trim()
 
-    // ── Top result ────────────────────────────────────────────────
+    // ── Top 3 results ─────────────────────────────────────────────
     // The "Top results" sidebar lists the rider's biggest results,
-    // most prestigious first. We take the first <li>'s text.
-    val topResult = doc.safe("ul.topresults li")
-        .firstOrNull()?.text?.trim()?.replace(Regex("\\s+"), " ")
-        ?: ""
+    // most prestigious first. We take the first 3 entries.
+    val topResults = doc.safe("ul.topresults li")
+        .take(3)
+        .map { it.text.trim().replace(Regex("\\s+"), " ") }
 
     // ── Wins ──────────────────────────────────────────────────────
     // "Key statistics" block: <ul class="rider-kpi">
-    //   <li><div class="kpi">26</div>
-    //        <div class="title"><a …>Wins</a></div>…</li>
     val wins = doc.safe("ul.rider-kpi li")
         .firstOrNull { li ->
             li.safe("div.title").any { div ->
@@ -223,13 +224,27 @@ fun getRiderDetails(riderSlug: String): RiderDetails {
         ?.let { li -> li.safe("div.kpi").firstOrNull()?.text?.trim() }
         ?: "0"
 
+    // ── Teams (all, deduped, in order) ────────────────────────────
+    // Structure: <ul class="rdr-teams2">
+    //   <li class="main …"><div class="name"><a …>Team Name</a> (WT)</div></li>
+    //   <li class="showifmob combiLine"><div class="name2">…</div></li>  ← mobile duplicate, skip
+    // We target only li.main entries to avoid the combiLine duplicates,
+    // and extract the team name from the <a> inside div.name.
+    val allTeams = doc.safe("ul.rdr-teams2 li.main")
+        .mapNotNull { li ->
+            li.safe("div.name a").firstOrNull()?.text?.trim()
+        }
+        .filter { it.isNotEmpty() }
+        .distinct()
+
     return RiderDetails(
         dateOfBirth = dateOfBirth,
         placeOfBirth = placeOfBirth,
         height = height,
         weight = weight,
         wins = wins,
-        topResult = topResult,
+        topResults = topResults,
+        allTeams = allTeams,
     )
 }
 
@@ -245,17 +260,15 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
     val doc = fetch(teamUrl)
     val name = teamName(doc)
 
-    val specialty = LinkedHashMap<String, MutableList<String>>() // slug -> all specialties
-    val nationality = LinkedHashMap<String, String>()            // slug -> country
-    val age = LinkedHashMap<String, String>()                    // slug -> age (years)
-    val displayName = LinkedHashMap<String, String>()            // slug -> "SURNAME First"
+    val specialty = LinkedHashMap<String, MutableList<String>>()
+    val nationality = LinkedHashMap<String, String>()
+    val age = LinkedHashMap<String, String>()
+    val displayName = LinkedHashMap<String, String>()
 
     fun tableRows(stabClass: String): List<DocElement> =
         doc.safe("div.stab.$stabClass table.teamlist tbody tr")
 
-    // Specialty tab: columns # | rider | specialty.
-    // A rider can appear in multiple specialty rows (e.g. Hills AND Oneday);
-    // collect them all, keeping order and dropping duplicates.
+    // Specialty tab
     for (row in tableRows("specialty")) {
         val slug = row.riderSlug() ?: continue
         val cells = row.safe("td")
@@ -266,7 +279,7 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
         row.flagCode()?.let { nationality.putIfAbsent(slug, FLAG_TO_COUNTRY[it] ?: it) }
     }
 
-    // Country tab: columns # | rider | country flag
+    // Country tab
     for (row in tableRows("country")) {
         val slug = row.riderSlug() ?: continue
         val cells = row.safe("td")
@@ -275,15 +288,14 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
         displayName.putIfAbsent(slug, try { row.findFirst("a").text.trim() } catch (_: Exception) { slug })
     }
 
-    // Age tab is a fallback for age if the country tab was empty.
+    // Age tab (fallback)
     for (row in tableRows("age")) {
         val slug = row.riderSlug() ?: continue
         if (age.containsKey(slug)) continue
         val raw = row.safe("td").lastOrNull()?.text?.trim().orEmpty()
-        age.putIfAbsent(slug, raw.substringBefore('y').trim())  // "28y + 3d" -> "28"
+        age.putIfAbsent(slug, raw.substringBefore('y').trim())
     }
 
-    // Union of all slugs we saw, preserving encounter order.
     val slugs = LinkedHashSet<String>().apply {
         addAll(specialty.keys); addAll(nationality.keys); addAll(age.keys)
     }
@@ -301,7 +313,8 @@ fun scrapeTeam(teamUrl: String, gender: String): List<RiderRow> {
             height = "",
             weight = "",
             wins = "",
-            topResult = "",
+            topResults = emptyList(),
+            previousTeams = emptyList(),
             specialties = specialty[slug] ?: emptyList(),
         )
     }
@@ -322,11 +335,9 @@ fun csvCell(s: String): String =
 val season = args.firstOrNull()?.toIntOrNull() ?: 2026
 System.err.println("Scraping WorldTour teams for $season ...")
 
-// listing path -> gender label written to the CSV.
-// Men's and women's WorldTour are at different URLs on PCS.
 val categories = linkedMapOf(
-    "teams.php?year=$season&s=worldtour" to "M",  // men's WorldTour
-    "teams/women" to "W",                          // women's WorldTour
+    "teams.php?year=$season&s=worldtour" to "M",
+    "teams/women" to "W",
 )
 
 val all = mutableListOf<RiderRow>()
@@ -342,8 +353,7 @@ for ((listingPath, gender) in categories) {
 }
 
 // Second pass: visit each rider's own page for date/place of birth,
-// height, weight, career wins, and top result. This is the slow part — one
-// request per rider — so the polite delay matters most here.
+// height, weight, career wins, top 3 results, and previous teams.
 System.err.println("Fetching individual rider details for ${all.size} riders ...")
 val detailed = all.mapIndexed { idx, r ->
     val details = try {
@@ -354,30 +364,53 @@ val detailed = all.mapIndexed { idx, r ->
     }
     if ((idx + 1) % 25 == 0) System.err.println("  ... ${idx + 1}/${all.size}")
     Thread.sleep(REQUEST_DELAY_MS)
+
+    // Previous teams = all teams from the rider page, minus the current team,
+    // compared case-insensitively to handle minor formatting differences.
+    val currentTeamLower = r.team.lowercase()
+    val previousTeams = details.allTeams
+        .filter { it.lowercase() != currentTeamLower }
+
     r.copy(
         dateOfBirth = details.dateOfBirth,
         placeOfBirth = details.placeOfBirth,
         height = details.height,
         weight = details.weight,
         wins = details.wins,
-        topResult = details.topResult,
+        topResults = details.topResults,
+        previousTeams = previousTeams,
     )
 }
 
 val out = File("worldtour_riders_$season.csv")
-// Widest rider determines how many specialty columns we need.
+
+// Dynamic column counts based on widest data across all riders.
 val maxSpecialties = (detailed.maxOfOrNull { it.specialties.size } ?: 0).coerceAtLeast(1)
+val maxPrevTeams = (detailed.maxOfOrNull { it.previousTeams.size } ?: 0).coerceAtLeast(1)
+
 out.bufferedWriter().use { w ->
     val specialtyHeaders = (1..maxSpecialties).joinToString(",") { "Specialty $it" }
-    w.write("Gender,Team,Rider,Nationality,Age,Date of birth,Place of birth,Height (m),Weight (kg),Wins,Top result,$specialtyHeaders\n")
+    val prevTeamHeaders = (1..maxPrevTeams).joinToString(",") { "Previous team $it" }
+
+    w.write("Gender,Team,Rider,Nationality,Age,Date of birth,Place of birth," +
+            "Height (m),Weight (kg),Wins," +
+            "Top result 1,Top result 2,Top result 3," +
+            "$prevTeamHeaders,$specialtyHeaders\n")
+
     detailed.sortedWith(compareBy({ it.gender }, { it.team }, { it.name })).forEach { r ->
-        // Pad the specialty list out to maxSpecialties so every row has the same columns.
+        // Pad top results to exactly 3.
+        val topCells = (0 until 3).map { r.topResults.getOrElse(it) { "" } }
+        // Pad previous teams to maxPrevTeams.
+        val prevCells = (0 until maxPrevTeams).map { r.previousTeams.getOrElse(it) { "" } }
+        // Pad specialties to maxSpecialties.
         val specCells = (0 until maxSpecialties).map { r.specialties.getOrElse(it) { "" } }
+
         w.write((listOf(
             r.gender, r.team, r.name, r.nationality, r.age,
-            r.dateOfBirth, r.placeOfBirth, r.height, r.weight, r.wins, r.topResult,
-        ) + specCells).joinToString(",") { csvCell(it) })
+            r.dateOfBirth, r.placeOfBirth, r.height, r.weight, r.wins,
+        ) + topCells + prevCells + specCells).joinToString(",") { csvCell(it) })
         w.write("\n")
     }
 }
-System.err.println("Wrote ${detailed.size} riders to ${out.name} (up to $maxSpecialties specialties per rider)")
+System.err.println("Wrote ${detailed.size} riders to ${out.name} " +
+    "(up to $maxSpecialties specialties, $maxPrevTeams previous teams per rider)")
