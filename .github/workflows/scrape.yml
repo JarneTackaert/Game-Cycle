@@ -1,6 +1,4 @@
 name: Scrape WorldTour riders
-
-# Lets you run it manually from the Actions tab
 on:
   workflow_dispatch:
     inputs:
@@ -9,32 +7,35 @@ on:
         required: true
         default: "2026"
 
+permissions:
+  contents: write          # lets the action commit the CSV back to the repo
+
 jobs:
   scrape:
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
-
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-
       - name: Install Kotlin
         run: |
           curl -s "https://get.sdkman.io" | bash
           source "$HOME/.sdkman/bin/sdkman-init.sh"
           sdk install kotlin
-
       - name: Run the scraper
         run: |
           source "$HOME/.sdkman/bin/sdkman-init.sh"
           kotlin WorldTourTeamsScraper.main.kts "${{ github.event.inputs.season }}"
-
-      - name: Save the CSV as a downloadable file
-        uses: actions/upload-artifact@v4
-        with:
-          name: worldtour-riders
-          path: worldtour_riders_*.csv
+      - name: Commit the CSV to data/riders.csv
+        run: |
+          mkdir -p data
+          cp worldtour_riders_*.csv data/riders.csv
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/riders.csv
+          git diff --staged --quiet || git commit -m "Update rider data ($(date -u +%Y-%m-%d))"
+          git push
