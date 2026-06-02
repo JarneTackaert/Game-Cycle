@@ -239,7 +239,7 @@ function ageBand(age) {
   // CSV uses M/F; the game's tabs expect Male/Female.
 function normGender(g) {
   if (g === "M") return "Male";
-  if (g === "F") return "Female";
+  if (g === "W") return "Female";
   return g;
 }
 
@@ -336,6 +336,14 @@ function setMode(m){
   mode=m;
   document.getElementById('m-daily').classList.toggle('on', m==='daily');
   document.getElementById('m-practice').classList.toggle('on', m==='practice');
+  // Clear shared UI residue from the previous mode before starting/restoring.
+  // (daily and practice share the same win panel, answer var, and input.)
+  document.getElementById('win').classList.remove('show');
+  document.getElementById('embed').innerHTML='';
+  document.getElementById('rows').innerHTML='';
+  document.getElementById('hints').innerHTML='';
+  document.getElementById('hintProgress').innerHTML='';
+  const inp=document.getElementById('guess'); inp.value=''; inp.disabled=false;
   newGame();
 }
 
