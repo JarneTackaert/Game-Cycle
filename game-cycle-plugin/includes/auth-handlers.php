@@ -208,13 +208,70 @@ function gc_hide_admin_bar()
 
 // --- Ranking & Score handling ---
 
+function gc_calculate_streak($user_id) {
+    global $wpdb;
+    $table = $wpdb->prefix . 'gc_scores';
+    
+    // Haal alle unieke dagen op waarop de gebruiker heeft gespeeld, gesorteerd van nieuw naar oud
+    $dates = $wpdb->get_col($wpdb->prepare("
+        SELECT dag FROM $table 
+        WHERE user_id = %d 
+        ORDER BY dag DESC
+    ", $user_id));
+
+    if (empty($dates)) {
+        return 0;
+    }
+
+    $streak = 0;
+    $today = new DateTime(current_time('Y-m-d'));
+    $yesterday = clone $today;
+    $yesterday->modify('-1 day');
+    
+    $last_date = new DateTime($dates[0]);
+    
+    // Als de laatste datum niet vandaag of gisteren is, is de streak verbroken
+    if ($last_date != $today && $last_date != $yesterday) {
+        return 0;
+    }
+
+    $current_date = $last_date;
+    $streak = 1;
+
+    for ($i = 1; $i < count($dates); $i++) {
+        $prev_date = new DateTime($dates[$i]);
+        $expected_date = clone $current_date;
+        $expected_date->modify('-1 day');
+
+        if ($prev_date == $expected_date) {
+            $streak++;
+            $current_date = $prev_date;
+        } else {
+            break;
+        }
+    }
+
+    return $streak;
+}
+
+add_action('wp_ajax_gc_get_user_stats', 'gc_get_user_stats');
+function gc_get_user_stats() {
+    $user_id = get_current_user_id();
+    if (!$user_id) {
+        wp_send_json_success(array('streak' => 0));
+    }
+    
+    $streak = gc_calculate_streak($user_id);
+    wp_send_json_success(array('streak' => $streak));
+}
+
 add_action('wp_ajax_gc_save_score', 'gc_save_score');
 function gc_save_score() {
     global $wpdb;
     $user_id = get_current_user_id();
     if (!$user_id) wp_send_json_error('Niet ingelogd');
 
-    $score = floatval($_POST['score']);
+    $score = intval($_POST['score']);
     $tijd = intval($_POST['tijd']);
     $dag = current_time('Y-m-d');
 
@@ -225,7 +282,7 @@ function gc_save_score() {
         `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
         `user_id` BIGINT(20) NOT NULL,
         `dag` DATE NOT NULL,
-        `score` DECIMAL(10,2) DEFAULT 0.00,
+        `score` INT(11) DEFAULT 0,
         `tijd` INT(11) DEFAULT 0,
         `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (`id`),
@@ -254,7 +311,7 @@ function gc_get_rankings() {
 
     // Daily
     $daily = $wpdb->get_results($wpdb->prepare("
-        SELECT u.display_name as name, s.score as g
+        SELECT u.display_name as name, CAST(s.score AS UNSIGNED) as g
         FROM {$wpdb->prefix}users u
         INNER JOIN $table s ON u.ID = s.user_id
         WHERE s.dag = %s
@@ -263,14 +320,23 @@ function gc_get_rankings() {
     ", $today));
 
     // General (All time found)
-    $general = $wpdb->get_results("
-        SELECT u.display_name as name, COUNT(*) as found, 0 as streak
+    $general_raw = $wpdb->get_results("
+        SELECT u.ID, u.display_name as name, COUNT(*) as found
         FROM {$wpdb->prefix}users u
         INNER JOIN $table s ON u.ID = s.user_id
         GROUP BY u.ID
         ORDER BY found DESC
         LIMIT 10
     ");
+
+    $general = array();
+    foreach ($general_raw as $row) {
+        $general[] = array(
+            'name' => $row->name,
+            'found' => $row->found,
+            'streak' => gc_calculate_streak($row->ID)
+        );
+    }
 
     wp_send_json_success(array(
         'daily' => $daily,

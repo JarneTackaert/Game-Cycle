@@ -131,6 +131,24 @@ async function fetchRankings() {
     }
 }
 
+async function fetchUserStats() {
+    const fd = new FormData();
+    fd.append('action', 'gc_get_user_stats');
+    try {
+        const res = await fetch(cycleGameData.ajax_url, {
+            method: 'POST',
+            body: fd
+        });
+        const data = await res.json();
+        if (data.success) {
+            streak = data.data.streak || 0;
+            renderStreak();
+        }
+    } catch (e) {
+        console.error("Failed to fetch user stats", e);
+    }
+}
+
 function load() {
     ALL = RIDERS;
     const dayLabel = document.getElementById('dayLabel');
@@ -140,6 +158,7 @@ function load() {
     renderStreak();
     setPool('Male');
     fetchRankings().then(renderBoards);
+    fetchUserStats();
 }
 
 function setMode(m) {
@@ -313,7 +332,7 @@ function renderBoards() {
         '<div class="sbrow day' + (p.me ? ' me' : '') + '">' +
         '<span class="rank' + (i < 3 ? ' top' : '') + '">' + (i + 1) + '</span>' +
         '<span class="sbname">' + p.name + '</span>' +
-        '<span class="sbval">' + p.g + ' <span class="u">beurt' + (p.g > 1 ? 'en' : '') + '</span></span>' +
+        '<span class="sbval">' + Math.floor(p.g) + ' <span class="u">beurt' + (p.g > 1 ? 'en' : '') + '</span></span>' +
         '</div>').join('');
 }
 
@@ -408,8 +427,6 @@ function submit(rider) {
 function recordWin() {
     totalFound++;
     if (mode === 'daily' && lastSolvedDay !== todayKey()) {
-        // continue the streak only if the previous solve was yesterday; otherwise a day was missed → restart at 1
-        streak = (lastSolvedDay === yesterdayKey()) ? streak + 1 : 1;
         lastSolvedDay = todayKey();
         lastDailyGuesses = guesses.length;
         dailyResolved[dailyTag()] = {date: todayKey(), outcome: 'solved', rider: answer, guesses: guesses.length};
@@ -420,8 +437,10 @@ function recordWin() {
         fd.append('score', guesses.length);
         fd.append('tijd', 0); // Tijd tracking not implemented in this version of game-cycle
         fetch(cycleGameData.ajax_url, { method: 'POST', body: fd })
-            .then(() => fetchRankings())
-            .then(() => renderBoards());
+            .then(() => {
+                fetchRankings().then(renderBoards);
+                fetchUserStats();
+            });
     }
     renderStreak();
     renderBoards();
