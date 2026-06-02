@@ -1,4 +1,4 @@
-const DATA_URL = cycleGameData.csv_url;
+const DATA_URL = "https://raw.githubusercontent.com/JarneTackaert/Game-Cycle/main/data/riders.csv";
 
 // Build the rider slug used by the cyclingfantasy.cc embed.
 // "Tadej Pogačar" -> "tadej-pogacar" (lowercase, accents stripped, hyphenated).
@@ -161,14 +161,14 @@ function setMode(m) {
 
 function cols() {
     const base = [
-        {key: 'fullName', label: 'Rider', w: '1fr'},
-        {key: 'ageBand', label: 'Age', w: '1fr'},
-        {key: 'nationality', label: 'Nationality', w: '1fr'},
+        {key: 'fullName', label: 'Renner', w: '1fr'},
+        {key: 'ageBand', label: 'Leeftijd', w: '1fr'},
+        {key: 'nationality', label: 'Nationaliteit', w: '1fr'},
         {key: 'team', label: 'Team', w: '1fr'},
         {key: 'circuit', label: 'Circuit', w: '1fr'},
-        {key: 'specialty', label: 'Specialty', w: '1fr'},
+        {key: 'specialty', label: 'Specialiteit', w: '1fr'},
     ];
-    if (pool === 'All') base.push({key: 'gender', label: 'Gender', w: '1fr'});
+    if (pool === 'All') base.push({key: 'gender', label: 'Geslacht', w: '1fr'});
     return base;
 }
 
@@ -235,7 +235,7 @@ function newGame() {
     const inp = document.getElementById('guess');
     inp.value = '';
     inp.disabled = false;
-    document.getElementById('counter').textContent = POOL.length + ' riders in the pool';
+    document.getElementById('counter').textContent = POOL.length + ' wielrenners beschikbaar';
     applyGrid();
     renderBoards();
     closeDrop();
@@ -255,17 +255,17 @@ function restoreResolvedDaily(rec) {
     inp.value = '';
     inp.disabled = true;
     if (rec.outcome === 'solved') {
-        document.getElementById('winTitle').textContent = 'Solved!';
-        document.getElementById('winp').textContent = rec.rider.fullName + ' (' + rec.rider.team + ') — solved in ' + rec.guesses + ' guess' + (rec.guesses > 1 ? 'es' : '') + '.';
+        document.getElementById('winTitle').textContent = 'Opgelost!';
+        document.getElementById('winp').textContent = rec.rider.fullName + ' (' + rec.rider.team + ') — je had ' + rec.guesses + ' gok' + (rec.guesses > 1 ? 'ken' : '') + 'nodig.';
     } else {
-        document.getElementById('winTitle').textContent = 'The answer was…';
-        document.getElementById('winp').textContent = rec.rider.fullName + ' (' + rec.rider.team + '). No worries — better luck tomorrow.';
+        document.getElementById('winTitle').textContent = 'Het antwoord was…';
+        document.getElementById('winp').textContent = rec.rider.fullName + ' (' + rec.rider.team + '). Geen zorgen — betere geluk morgen.';
     }
     showEmbed();
     document.getElementById('win').classList.add('show');
     document.getElementById('counter').textContent = (rec.outcome === 'solved')
-        ? "You've already solved today's rider — come back tomorrow, or switch to Practice."
-        : "You gave up on today's rider — come back tomorrow, or switch to Practice.";
+        ? "Je hebt de oplossing van vandaag al gevonden. Kom morgen terug of wissel naar oefenmodus."
+        : "Je hebt opgegeven vandaag. Kom morgen terug of wissel naar oefenmodus om verder te spelen.";
     applyGrid();
     renderBoards();
     closeDrop();
@@ -295,7 +295,7 @@ function renderStreak() {
 function renderBoards() {
     // Play again only makes sense in practice; daily has one rider per day
     document.getElementById('againBtn').style.display = (mode === 'practice') ? '' : 'none';
-    
+
     // GENERAL
     const gen = REAL_GENERAL;
     document.getElementById('genBoard').innerHTML = gen.map((p, i) =>
@@ -586,27 +586,27 @@ function renderHints() {
     }).length;
     if (wrong >= 3) {
         var w = answer.wins || 0;
-        var txt = w > 0 ? '\u{1F3C6} This rider has <b>' + w + '</b> career ' + (w === 1 ? 'victory' : 'victories') + '.'
-            : '\u{1F3C6} This rider has <b>no recorded wins</b>.';
+        var txt = w > 0 ? '\u{1F3C6} Deze renner heeft <b>' + w + '</b> ' + (w === 1 ? 'overwinning' : 'overwinningen') + '.'
+            : '\u{1F3C6} Deze renner heeft <b>geen geregistreerde overwinningen</b>.';
         el.innerHTML += '<div class="hint hint-victories">' + txt + '</div>';
     }
     if (wrong >= 5) {
         var tops = answer.topResults || [];
-        var txt2 = '\u{1F947} <b>Top results:</b> ';
+        var txt2 = '\u{1F947} <b>Top resultaten:</b> ';
         if (tops.length > 0) txt2 += '<ul>' + tops.map(function (t) {
             return '<li>' + t + '</li>'
         }).join('') + '</ul>';
-        else txt2 += 'No top results on record.';
+        else txt2 += 'Geen top resultaten opgenomen.';
         el.innerHTML += '<div class="hint hint-results">' + txt2 + '</div>';
     }
     if (wrong >= 8) {
         var teams = answer.previousTeams || [];
-        var txt3 = '\u{1F504} <b>Previous teams:</b> ';
+        var txt3 = '\u{1F504} <b>Voorgaande teams:</b> ';
         if (teams.length > 0) {
             txt3 += '<span class="team-chain">' + teams.map(function (t, i) {
                 return '<span class="team-chip">' + t + '</span>' + (i < teams.length - 1 ? ' <span class="team-arrow">\u2192</span> ' : '')
             }).join('') + '</span>';
-        } else txt3 += 'No previous teams on record.';
+        } else txt3 += 'Geen voorgaande teams opgenomen.';
         el.innerHTML += '<div class="hint hint-teams">' + txt3 + '</div>';
     }
     renderHintProgress(wrong);
@@ -627,13 +627,13 @@ function renderHintProgress(wrong) {
         }
     }
     if (!next) {
-        el.innerHTML = '<div class="hp-done">\u2713 All hints unlocked</div>';
+        el.innerHTML = '<div class="hp-done">\u2713 Alle hints ontgrendeld</div>';
         return;
     }
     var prev = thresholds[thresholds.indexOf(next) - 1] || 0;
     var pct = Math.round(((wrong - prev) / (next - prev)) * 100);
     var remaining = next - wrong;
-    el.innerHTML = '<div class="hp-label">Next hint in ' + remaining + ' wrong guess' + (remaining > 1 ? 'es' : '') + '</div>'
+    el.innerHTML = '<div class="hp-label">Volgende hint in ' + remaining + ' verkeerde gok' + (remaining > 1 ? 'jes' : '') + '</div>'
         + '<div class="hp-bar"><div class="hp-fill" style="width:' + pct + '%"></div></div>';
 }
 
@@ -644,5 +644,5 @@ loadRiders()
     .catch(function (err) {
         console.error(err);
         document.getElementById('err').textContent =
-            "Couldn't load rider data. Please try again in a minute.";
+            "Kon de renner data niet ophalen. Probeer binnen 1 minuut opnieuw.";
     });

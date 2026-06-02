@@ -222,23 +222,23 @@ function cycle_game_shortcode() {
         </div>
         <div class="wrap cycle-game-plugin-container">
         <header>
-            <div class="tag">Classic Mode · 2026 season</div>
+            <div class="tag">Klassieke modus · seizoen 2026</div>
             <h1>CYCLE</h1>
         </header>
-        <p class="sub">Guess the mystery pro cyclist. Green means a match.</p>
+        <p class="sub">Probeer de mysterieuze wielrenner te raden. Als het vakje groen kleurt heb je een match.</p>
 
         <div style="text-align:center">
-            <div class="streak" id="streak"><span class="flame">🔥</span> <span id="streakNum">0</span> <span class="lab">day streak</span>
+            <div class="streak" id="streak"><span class="flame">🔥</span> <span id="streakNum">0</span> <span class="lab">Dag streak</span>
             </div>
         </div>
 
         <div class="mode">
-            <button id="m-daily" class="on" onclick="setMode('daily')">Today's rider</button>
-            <button id="m-practice" onclick="setMode('practice')">Practice</button>
+            <button id="m-daily" class="on" onclick="setMode('daily')">Renner van de dag</button>
+            <button id="m-practice" onclick="setMode('practice')">Oefenen</button>
         </div>
 
         <div class="win" id="win">
-            <h2 id="winTitle">Solved!</h2>
+            <h2 id="winTitle">Opgelost!</h2>
             <p id="winp"></p>
             <div class="embed" id="embed"></div>
 
@@ -257,22 +257,22 @@ function cycle_game_shortcode() {
                 </div>
             </div>
 
-            <button class="again" id="againBtn" onclick="newGame()" style="display:none">Play again</button>
+            <button class="again" id="againBtn" onclick="newGame()" style="display:none">Opnieuw spelen</button>
         </div>
 
         <div class="tabs">
-            <button id="t-Male" class="on" onclick="setPool('Male')">Men</button>
-            <button id="t-Female" onclick="setPool('Female')">Women</button>
-            <button id="t-All" onclick="setPool('All')">All</button>
+            <button id="t-Male" class="on" onclick="setPool('Male')">Man</button>
+            <button id="t-Female" onclick="setPool('Female')">Vrouw</button>
+            <button id="t-All" onclick="setPool('All')">Alles</button>
         </div>
 
         <div class="tabs" id="rankTabs">
-            <button id="r-all" class="on" onclick="setRankFilter('all')">All riders</button>
-            <button id="r-ranked" onclick="setRankFilter('ranked')">Top ranked only</button>
+            <button id="r-all" class="on" onclick="setRankFilter('all')">Alle renners</button>
+            <button id="r-ranked" onclick="setRankFilter('ranked')">Alleen top gerangschikten</button>
         </div>
 
         <div class="searchbox">
-            <input id="guess" type="text" placeholder="Type a rider's name…" autocomplete="off"/>
+            <input id="guess" type="text" placeholder="Typ de naam van een wielrenner" autocomplete="off"/>
             <div class="drop" id="drop"></div>
         </div>
         <div class="counter" id="counter"></div>
@@ -281,12 +281,12 @@ function cycle_game_shortcode() {
         <div id="hintProgress"></div>
 
         <div style="text-align:center;margin:-4px 0 16px">
-            <button id="giveup" class="giveup" onclick="giveUp()">I give up</button>
+            <button id="giveup" class="giveup" onclick="giveUp()">Ik geef op</button>
         </div>
 
         <div class="legend">
-            <span><i class="sw g-green"></i> Match</span>
-            <span><i class="sw g-red"></i> No match</span>
+            <span><i class="sw g-green"></i>Match</span>
+            <span><i class="sw g-red"></i>Geen match</span>
         </div>
 
         <div class="board">
