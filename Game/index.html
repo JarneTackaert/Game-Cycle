@@ -345,12 +345,13 @@ function setMode(m){
   document.getElementById('m-daily').classList.toggle('on', m==='daily');
   document.getElementById('m-practice').classList.toggle('on', m==='practice');
   // Clear shared UI residue from the previous mode before starting/restoring.
-  // (daily and practice share the same win panel, answer var, and input.)
+  // (daily and practice share the same win panel, answer var, input, and counter.)
   document.getElementById('win').classList.remove('show');
   document.getElementById('embed').innerHTML='';
   document.getElementById('rows').innerHTML='';
   document.getElementById('hints').innerHTML='';
   document.getElementById('hintProgress').innerHTML='';
+  document.getElementById('counter').textContent='';
   const inp=document.getElementById('guess'); inp.value=''; inp.disabled=false;
   newGame();
 }
@@ -434,6 +435,31 @@ function newGame(){
   updateGiveUp(false);
 }
 
+/* Single source of truth for the finished-round panel (solved or gave up).
+   Both the live paths (submit win-branch, giveUp) and the restore path
+   (restoreResolvedDaily) call this, so the wording/layout can never drift.
+   Caller is responsible for confetti, scrolling, locking input, etc. */
+function renderResolvedPanel(rider, outcome, guessCount){
+  if(outcome==='solved'){
+    document.getElementById('winTitle').textContent='Proficiat!';
+    document.getElementById('winp').textContent=
+      rider.fullName+' ('+rider.team+') — opgelost in '+guessCount+' gok'+(guessCount>1?'jes':'je')+'.';
+  }else{
+    document.getElementById('winTitle').textContent='Het antwoord was: '+rider.fullName+' ('+rider.team+')';
+    document.getElementById('winp').textContent='Geen zorgen, morgen is er een nieuwe kans op eeuwige roem!';
+  }
+  showEmbed();
+  document.getElementById('win').classList.add('show');
+  // The persistent "already resolved today" notice only applies in daily mode.
+  if(mode==='daily'){
+    document.getElementById('counter').textContent = (outcome==='solved')
+      ? "Je hebt de oplossing voor vandaag al gevonden - Kom morgen terug, of wissel naar de Oefenzone"
+      : "Je hebt opgegeven... - Kom morgen terug, of wissel naar de Oefenzone";
+  }else{
+    document.getElementById('counter').textContent='';
+  }
+}
+
 /* Rebuild the finished panel for an already-resolved daily round (solved or gave up).
    Input stays locked and the give-up button stays hidden, regardless of mode-switching. */
 function restoreResolvedDaily(rec){
@@ -442,21 +468,9 @@ function restoreResolvedDaily(rec){
   document.getElementById('rows').innerHTML='';
   document.getElementById('hints').innerHTML='';
   document.getElementById('hintProgress').innerHTML='';
-  document.getElementById('win').classList.remove('show');
   document.getElementById('embed').innerHTML='';
   const inp=document.getElementById('guess'); inp.value=''; inp.disabled=true;
-  if(rec.outcome==='solved'){
-    document.getElementById('winTitle').textContent='Proficiat!';
-    document.getElementById('winp').textContent=rec.rider.fullName+' ('+rec.rider.team+') — solved in '+rec.guesses+' guess'+(rec.guesses>1?'es':'')+'.';
-  }else{
-    document.getElementById('winTitle').textContent='Het antwoord was...';
-    document.getElementById('winp').textContent=rec.rider.fullName+' ('+rec.rider.team+'). Geen zorgen! Morgen is er een nieuwe kans op eeuwige roem!';
-  }
-  showEmbed();
-  document.getElementById('win').classList.add('show');
-  document.getElementById('counter').textContent = (rec.outcome==='solved')
-    ? "Je hebt de oplossing voor vandaag al gevonden - Kom morgen terug, of wissel naar de Oefenzone"
-    : "Je hebt opgegeven... - Kom morgen terug, of wissel naar de Oefenzone";
+  renderResolvedPanel(rec.rider, rec.outcome, rec.guesses);
   applyGrid();
   renderBoards();
   closeDrop();
@@ -567,10 +581,7 @@ function submit(rider){
   closeDrop();
   renderHints();
   if(rider.fullName===answer.fullName){
-    document.getElementById('winTitle').textContent='Solved!';
-    document.getElementById('winp').textContent=answer.fullName+' ('+answer.team+') — solved in '+guesses.length+' guess'+(guesses.length>1?'es':'')+'.';
-    showEmbed();
-    document.getElementById('win').classList.add('show');
+    renderResolvedPanel(answer, 'solved', guesses.length);
     inp.disabled=true;
     document.getElementById('giveup').classList.add('hide');
     window.scrollTo({top:0, behavior:'smooth'});
@@ -606,10 +617,7 @@ function giveUp(){
     dailyResolved[dailyTag()] = {date:todayKey(), outcome:'gaveup', rider:answer, guesses:guesses.length};
     renderStreak();
   }
-  document.getElementById('winTitle').textContent='Het antwoord was: ...';
-  document.getElementById('winp').textContent=answer.fullName+' ('+answer.team+'). Geen zorgen, morgen is er een nieuwe kans op eeuwige roem!';
-  showEmbed();
-  document.getElementById('win').classList.add('show');
+  renderResolvedPanel(answer, 'gaveup', guesses.length);
   window.scrollTo({top:0, behavior:'smooth'});
   renderBoards();
 }
