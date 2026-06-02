@@ -146,6 +146,8 @@ function setMode(m) {
     mode = m;
     document.getElementById('m-daily').classList.toggle('on', m === 'daily');
     document.getElementById('m-practice').classList.toggle('on', m === 'practice');
+    document.getElementById('m-daily').setAttribute('aria-selected', m==='daily');
+    document.getElementById('m-practice').setAttribute('aria-selected', m==='practice');
     // Clear shared UI residue from the previous mode before starting/restoring.
     // (daily and practice share the same win panel, answer var, and input.)
     document.getElementById('win').classList.remove('show');

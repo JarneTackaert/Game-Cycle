@@ -14,7 +14,8 @@ define('GC_PATH', plugin_dir_path(__FILE__));
 
 require_once GC_PATH . 'includes/auth-handlers.php';
 
-function cycle_game_enqueue_scripts() {
+function cycle_game_enqueue_scripts()
+{
     // Externe bibliotheken
     wp_enqueue_script('canvas-confetti', 'https://cdnjs.cloudflare.com/ajax/libs/canvas-confetti/1.9.3/confetti.browser.min.js', array(), '1.9.3', true);
     wp_enqueue_script('iframe-resizer', 'https://cdn.jsdelivr.net/npm/@iframe-resizer/parent@5.4.6/index.umd.js', array(), '5.4.6', true);
@@ -28,20 +29,22 @@ function cycle_game_enqueue_scripts() {
 
     // Doorgeven van variabelen naar JS
     wp_localize_script('cycle-game-script', 'cycleGameData', array(
-        'ajax_url' => admin_url('admin-ajax.php'),
-        'csv_url'  => 'https://raw.githubusercontent.com/JarneTackaert/Game-Cycle/main/data/riders.csv',
-        'current_user_name' => is_user_logged_in() ? wp_get_current_user()->display_name : ''
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'csv_url' => 'https://raw.githubusercontent.com/JarneTackaert/Game-Cycle/main/data/riders.csv',
+            'current_user_name' => is_user_logged_in() ? wp_get_current_user()->display_name : ''
     ));
 }
+
 add_action('wp_enqueue_scripts', 'cycle_game_enqueue_scripts');
 
-function cycle_game_shortcode() {
+function cycle_game_shortcode()
+{
     if (!is_user_logged_in()) {
         ob_start();
         $login_error = isset($_GET['login_error']) ? 'Fout: Gebruikersnaam of wachtwoord is onjuist.' : '';
         ?>
         <div id="gc-game-container">
-            <?php 
+            <?php
             $action = isset($_GET['action']) ? $_GET['action'] : '';
             $rp_key = isset($_GET['key']) ? $_GET['key'] : '';
             $rp_login = isset($_GET['login']) ? $_GET['login'] : '';
@@ -69,21 +72,24 @@ function cycle_game_shortcode() {
                     ));
                     ?>
                     <p class="gc-text-center gc-mt-15">
-                        <a href="javascript:void(0)" onclick="showAuth('lostpassword')" class="gc-lost-password-link">Wachtwoord vergeten?</a>
+                        <a href="javascript:void(0)" onclick="showAuth('lostpassword')" class="gc-lost-password-link">Wachtwoord
+                            vergeten?</a>
                     </p>
                 </div>
             </div>
 
             <div id="gc-lostpassword-view" class="auth-view gc-hidden">
                 <h3>🔑 Wachtwoord vergeten</h3>
-                <p>Vul je gebruikersnaam of e-mailadres in. Je ontvangt een e-mail met een link om een nieuw wachtwoord aan te maken.</p>
+                <p>Vul je gebruikersnaam of e-mailadres in. Je ontvangt een e-mail met een link om een nieuw wachtwoord
+                    aan te maken.</p>
                 <div id="lost-msg"></div>
                 <div class="gc-login-box">
                     <label for="lost-user">Gebruikersnaam of e-mail</label>
                     <input type="text" id="lost-user">
                     <button onclick="doLostPassword()" class="gc-button gc-w-100">Wachtwoord herstellen</button>
                     <p class="gc-text-center gc-mt-15">
-                        <a href="javascript:void(0)" onclick="showAuth('login')" class="gc-lost-password-link">Terug naar inloggen</a>
+                        <a href="javascript:void(0)" onclick="showAuth('login')" class="gc-lost-password-link">Terug
+                            naar inloggen</a>
                     </p>
                 </div>
             </div>
@@ -110,13 +116,13 @@ function cycle_game_shortcode() {
                 <div class="gc-login-box">
                     <input type="hidden" id="rp-key" value="<?php echo esc_attr($rp_key); ?>">
                     <input type="hidden" id="rp-login" value="<?php echo esc_attr($rp_login); ?>">
-                    
+
                     <label for="rp-pass1">Nieuw wachtwoord</label>
                     <input type="password" id="rp-pass1">
-                    
+
                     <label for="rp-pass2">Bevestig nieuw wachtwoord</label>
                     <input type="password" id="rp-pass2">
-                    
+
                     <button onclick="doResetPassword()" class="gc-button gc-w-100">Wachtwoord opslaan</button>
                 </div>
             </div>
@@ -131,7 +137,7 @@ function cycle_game_shortcode() {
 
                 const targetView = document.getElementById('gc-' + view + '-view');
                 if (targetView) targetView.classList.remove('gc-hidden');
-                
+
                 document.getElementById('btn-login-tab').className = (view === 'login' || view === 'lostpassword') ? 'active' : '';
                 document.getElementById('btn-register-tab').className = view === 'register' ? 'active' : '';
 
@@ -154,16 +160,16 @@ function cycle_game_shortcode() {
                     method: 'POST',
                     body: fd
                 })
-                .then(r => r.json())
-                .then(r => {
-                    const msgDiv = document.getElementById('reset-msg');
-                    if (r.success) {
-                        msgDiv.innerHTML = '<p class="gc-success-msg">' + r.data + '</p>';
-                        setTimeout(() => showAuth('login'), 3000);
-                    } else {
-                        msgDiv.innerHTML = '<p class="gc-error-msg">' + r.data + '</p>';
-                    }
-                });
+                    .then(r => r.json())
+                    .then(r => {
+                        const msgDiv = document.getElementById('reset-msg');
+                        if (r.success) {
+                            msgDiv.innerHTML = '<p class="gc-success-msg">' + r.data + '</p>';
+                            setTimeout(() => showAuth('login'), 3000);
+                        } else {
+                            msgDiv.innerHTML = '<p class="gc-error-msg">' + r.data + '</p>';
+                        }
+                    });
             }
 
             function doLostPassword() {
@@ -175,15 +181,15 @@ function cycle_game_shortcode() {
                     method: 'POST',
                     body: fd
                 })
-                .then(r => r.json())
-                .then(r => {
-                    const msgDiv = document.getElementById('lost-msg');
-                    if (r.success) {
-                        msgDiv.innerHTML = '<p class="gc-success-msg">' + r.data + '</p>';
-                    } else {
-                        msgDiv.innerHTML = '<p class="gc-error-msg">' + r.data + '</p>';
-                    }
-                });
+                    .then(r => r.json())
+                    .then(r => {
+                        const msgDiv = document.getElementById('lost-msg');
+                        if (r.success) {
+                            msgDiv.innerHTML = '<p class="gc-success-msg">' + r.data + '</p>';
+                        } else {
+                            msgDiv.innerHTML = '<p class="gc-error-msg">' + r.data + '</p>';
+                        }
+                    });
             }
 
             function doRegister() {
@@ -197,16 +203,16 @@ function cycle_game_shortcode() {
                     method: 'POST',
                     body: fd
                 })
-                .then(r => r.json())
-                .then(r => {
-                    const msgDiv = document.getElementById('reg-msg');
-                    if (r.success) {
-                        msgDiv.innerHTML = '<p class="gc-success-msg">' + r.data + '</p>';
-                        setTimeout(() => location.reload(), 2000);
-                    } else {
-                        msgDiv.innerHTML = '<p class="gc-error-msg">' + r.data + '</p>';
-                    }
-                });
+                    .then(r => r.json())
+                    .then(r => {
+                        const msgDiv = document.getElementById('reg-msg');
+                        if (r.success) {
+                            msgDiv.innerHTML = '<p class="gc-success-msg">' + r.data + '</p>';
+                            setTimeout(() => location.reload(), 2000);
+                        } else {
+                            msgDiv.innerHTML = '<p class="gc-error-msg">' + r.data + '</p>';
+                        }
+                    });
             }
         </script>
         <?php
@@ -221,85 +227,99 @@ function cycle_game_shortcode() {
             <a href="<?php echo wp_logout_url(get_permalink()); ?>">Uitloggen</a>
         </div>
         <div class="wrap cycle-game-plugin-container">
-        <header>
-            <div class="tag">Klassieke modus · seizoen 2026</div>
-            <h1>CYCLE</h1>
-        </header>
-        <p class="sub">Probeer de mysterieuze wielrenner te raden. Als het vakje groen kleurt heb je een match.</p>
+            <header>
+                <h1>CYCLE.</h1>
+            </header>
+            <p class="sub">Raad de dagelijkse myserieuze renner of renster!</p>
 
-        <div style="text-align:center">
-            <div class="streak" id="streak"><span class="flame">🔥</span> <span id="streakNum">0</span> <span class="lab">Dag streak</span>
-            </div>
-        </div>
-
-        <div class="mode">
-            <button id="m-daily" class="on" onclick="setMode('daily')">Renner van de dag</button>
-            <button id="m-practice" onclick="setMode('practice')">Oefenen</button>
-        </div>
-
-        <div class="win" id="win">
-            <h2 id="winTitle">Opgelost!</h2>
-            <p id="winp"></p>
-            <div class="embed" id="embed"></div>
-
-            <div class="boards">
-                <div class="scoreboard">
-                    <h3>🏆 Algemeen klassement <span class="sub2">Aller tijden</span></h3>
-                    <div class="sbrow gen head2"><span>#</span><span>Speler</span><span
-                            style="text-align:right">Renners</span><span style="text-align:right">Streak</span></div>
-                    <div id="genBoard"></div>
-                </div>
-                <div class="scoreboard">
-                    <h3>📅 Dagklassement <span class="sub2" id="dayLabel">Vandaag</span></h3>
-                    <div class="sbrow day head2"><span>#</span><span>Speler</span><span
-                            style="text-align:right">Beurten</span></div>
-                    <div id="dayBoard"></div>
+            <div style="text-align:center">
+                <div class="streak" id="streak"><span class="flame">🔥</span> <span id="streakNum">0</span> <span
+                            class="lab">dagen streak</span>
                 </div>
             </div>
 
-            <button class="again" id="againBtn" onclick="newGame()" style="display:none">Opnieuw spelen</button>
+            <!-- Mode tabs: the primary choice, sitting on top of the play surface. -->
+            <div class="modetabs" role="tablist" aria-label="Spelmodus">
+                <button id="m-daily" class="modetab on" role="tab" aria-selected="true" onclick="setMode('daily')">
+                    <span class="mt-ico">📅</span> Renner van de dag
+                </button>
+                <button id="m-practice" class="modetab" role="tab" aria-selected="false" onclick="setMode('practice')">
+                    <span class="mt-ico">🚴</span> Oefenzone
+                </button>
+            </div>
+
+            <!-- Shared settings: one card below the tabs, used by both modes. -->
+            <div class="settings" id="settings">
+                <div class="setgroup">
+                    <span class="setlabel">Categorie</span>
+                    <div class="segmented" id="poolSeg" role="group" aria-label="Categorie">
+                        <button id="t-Male" class="seg on" onclick="setPool('Male')">Mannen</button>
+                        <button id="t-Female" class="seg" onclick="setPool('Female')">Vrouwen</button>
+                        <button id="t-All" class="seg" onclick="setPool('All')">Alle</button>
+                    </div>
+                </div>
+                <div class="setgroup">
+                    <span class="setlabel">Renners</span>
+                    <div class="segmented" id="rankSeg" role="group" aria-label="Renners">
+                        <button id="r-all" class="seg on" onclick="setRankFilter('all')">Alle</button>
+                        <button id="r-ranked" class="seg" onclick="setRankFilter('ranked')">Top 250 UCI</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="win" id="win">
+                <h2 id="winTitle">Opgelost!</h2>
+                <p id="winp"></p>
+                <div class="embed" id="embed"></div>
+
+                <div class="boards">
+                    <div class="scoreboard">
+                        <h3>🏆 Algemeen klassement <span class="sub2">Aller tijden</span></h3>
+                        <div class="sbrow gen head2"><span>#</span><span>Speler</span><span
+                                    style="text-align:right">Renners</span><span style="text-align:right">Streak</span>
+                        </div>
+                        <div id="genBoard"></div>
+                    </div>
+                    <div class="scoreboard">
+                        <h3>📅 Dagklassement <span class="sub2" id="dayLabel">Vandaag</span></h3>
+                        <div class="sbrow day head2"><span>#</span><span>Speler</span><span
+                                    style="text-align:right">Beurten</span></div>
+                        <div id="dayBoard"></div>
+                    </div>
+                </div>
+
+                <button class="again" id="againBtn" onclick="newGame()" style="display:none">Opnieuw spelen</button>
+            </div>
+
+            <div class="searchbox">
+                <input id="guess" type="text" placeholder="Typ de naam van een wielrenner" autocomplete="off"/>
+                <div class="drop" id="drop"></div>
+            </div>
+            <div class="counter" id="counter"></div>
+
+            <div class="hints-container" id="hints"></div>
+            <div id="hintProgress"></div>
+
+            <div style="text-align:center;margin:-4px 0 16px">
+                <button id="giveup" class="giveup" onclick="giveUp()">Ik geef op</button>
+            </div>
+
+            <div class="legend">
+                <span><i class="sw g-green"></i>Match</span>
+                <span><i class="sw g-red"></i>Geen match</span>
+            </div>
+
+            <div class="board">
+                <div class="row head" id="head"></div>
+                <div id="rows"></div>
+            </div>
+
+            <div class="err" id="err"></div>
         </div>
-
-        <div class="tabs">
-            <button id="t-Male" class="on" onclick="setPool('Male')">Man</button>
-            <button id="t-Female" onclick="setPool('Female')">Vrouw</button>
-            <button id="t-All" onclick="setPool('All')">Alles</button>
-        </div>
-
-        <div class="tabs" id="rankTabs">
-            <button id="r-all" class="on" onclick="setRankFilter('all')">Alle renners</button>
-            <button id="r-ranked" onclick="setRankFilter('ranked')">Alleen top gerangschikten</button>
-        </div>
-
-        <div class="searchbox">
-            <input id="guess" type="text" placeholder="Typ de naam van een wielrenner" autocomplete="off"/>
-            <div class="drop" id="drop"></div>
-        </div>
-        <div class="counter" id="counter"></div>
-
-        <div class="hints-container" id="hints"></div>
-        <div id="hintProgress"></div>
-
-        <div style="text-align:center;margin:-4px 0 16px">
-            <button id="giveup" class="giveup" onclick="giveUp()">Ik geef op</button>
-        </div>
-
-        <div class="legend">
-            <span><i class="sw g-green"></i>Match</span>
-            <span><i class="sw g-red"></i>Geen match</span>
-        </div>
-
-        <div class="board">
-            <div class="row head" id="head"></div>
-            <div id="rows"></div>
-        </div>
-
-        <div class="err" id="err"></div>
-    </div>
     </div>
     <script>
         // Start het spel zodra de pagina geladen is
-        window.addEventListener('load', function() {
+        window.addEventListener('load', function () {
             if (typeof load === 'function') {
                 loadRiders().then(load).catch(err => {
                     console.error("Fout bij laden riders:", err);
@@ -311,4 +331,5 @@ function cycle_game_shortcode() {
     <?php
     return ob_get_clean();
 }
+
 add_shortcode('cycle_game', 'cycle_game_shortcode');
