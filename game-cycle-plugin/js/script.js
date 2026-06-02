@@ -107,26 +107,29 @@ function seededIndex(seedStr, len) {
     return Math.abs(h) % len;
 }
 
-/* ---- Demo scoreboard data (placeholder until backend/login exists) ----
-   The real boards will be fetched from the server; your live result is spliced in
-   so the UI shows exactly how standings will look. */
-const DEMO_GENERAL = [
-    {name: 'Wout_fan_88', streak: 42, found: 51},
-    {name: 'KoersKenneth', streak: 31, found: 47},
-    {name: 'PelotonPaula', streak: 27, found: 39},
-    {name: 'BiddonVeloo', streak: 18, found: 33},
-    {name: 'SprintSofie', streak: 12, found: 25},
-    {name: 'KasseiKoen', streak: 9, found: 21},
-    {name: 'BergopBram', streak: 6, found: 15},
-];
-const DEMO_DAILY = [
-    {name: 'KoersKenneth', g: 2},
-    {name: 'PelotonPaula', g: 3},
-    {name: 'Wout_fan_88', g: 3},
-    {name: 'SprintSofie', g: 4},
-    {name: 'KasseiKoen', g: 5},
-    {name: 'BiddonVeloo', g: 6},
-];
+/* ---- Real scoreboard data ----
+   The real boards will be fetched from the server. */
+let REAL_GENERAL = [];
+let REAL_DAILY = [];
+
+async function fetchRankings() {
+    const fd = new FormData();
+    fd.append('action', 'gc_get_rankings');
+    try {
+        const res = await fetch(cycleGameData.ajax_url, {
+            method: 'POST',
+            body: fd
+        });
+        const data = await res.json();
+        if (data.success) {
+            const myName = cycleGameData.current_user_name;
+            REAL_GENERAL = data.data.general.map(p => ({...p, me: p.name === myName}));
+            REAL_DAILY = data.data.daily.map(p => ({...p, me: p.name === myName}));
+        }
+    } catch (e) {
+        console.error("Failed to fetch rankings", e);
+    }
+}
 
 function load() {
     ALL = RIDERS;
@@ -136,6 +139,7 @@ function load() {
     }
     renderStreak();
     setPool('Male');
+    fetchRankings().then(renderBoards);
 }
 
 function setMode(m) {
@@ -291,32 +295,24 @@ function renderStreak() {
 function renderBoards() {
     // Play again only makes sense in practice; daily has one rider per day
     document.getElementById('againBtn').style.display = (mode === 'practice') ? '' : 'none';
-    // GENERAL: demo players + you (if you have any all-time finds), sorted by streak then found
-    const me = {name: 'You', streak: streak, found: totalFound, me: true};
-    const gen = DEMO_GENERAL.map(p => ({...p}));
-    if (totalFound > 0 || streak > 0) gen.push(me);
-    gen.sort((a, b) => b.found - a.found || b.streak - a.streak);
+    
+    // GENERAL
+    const gen = REAL_GENERAL;
     document.getElementById('genBoard').innerHTML = gen.map((p, i) =>
         '<div class="sbrow gen' + (p.me ? ' me' : '') + '">' +
         '<span class="rank' + (i < 3 ? ' top' : '') + '">' + (i + 1) + '</span>' +
         '<span class="sbname">' + p.name + '</span>' +
         '<span class="sbval">' + p.found + '</span>' +
-        '<span class="sbflame">🔥 ' + p.streak + '</span>' +
+        '<span class="sbflame">🔥 ' + (p.streak || 0) + '</span>' +
         '</div>').join('');
 
-    // DAILY: demo players + your today's result (only once solved today), sorted by fewest guesses
-    const day = DEMO_DAILY.map(p => ({...p}));
-    if (mode === 'daily' && lastSolvedDay === todayKey()) day.push({
-        name: 'You',
-        g: guesses.length || lastDailyGuesses,
-        me: true
-    });
-    day.sort((a, b) => a.g - b.g);
+    // DAILY
+    const day = REAL_DAILY;
     document.getElementById('dayBoard').innerHTML = day.map((p, i) =>
         '<div class="sbrow day' + (p.me ? ' me' : '') + '">' +
         '<span class="rank' + (i < 3 ? ' top' : '') + '">' + (i + 1) + '</span>' +
         '<span class="sbname">' + p.name + '</span>' +
-        '<span class="sbval">' + p.g + ' <span class="u">guess' + (p.g > 1 ? 'es' : '') + '</span></span>' +
+        '<span class="sbval">' + p.g + ' <span class="u">beurt' + (p.g > 1 ? 'en' : '') + '</span></span>' +
         '</div>').join('');
 }
 
@@ -416,6 +412,15 @@ function recordWin() {
         lastSolvedDay = todayKey();
         lastDailyGuesses = guesses.length;
         dailyResolved[dailyTag()] = {date: todayKey(), outcome: 'solved', rider: answer, guesses: guesses.length};
+
+        // Save score to server
+        const fd = new FormData();
+        fd.append('action', 'gc_save_score');
+        fd.append('score', guesses.length);
+        fd.append('tijd', 0); // Tijd tracking not implemented in this version of game-cycle
+        fetch(cycleGameData.ajax_url, { method: 'POST', body: fd })
+            .then(() => fetchRankings())
+            .then(() => renderBoards());
     }
     renderStreak();
     renderBoards();

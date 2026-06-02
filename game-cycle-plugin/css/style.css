@@ -615,3 +615,167 @@ button.again:hover {
     color: var(--green);
     font-weight: 600
 }
+
+#gc-outer-wrapper {
+    max-width: 100%;
+    margin: 10px auto;
+}
+
+#gc-user-bar {
+    text-align: right;
+    font-size: 14px;
+    margin-bottom: 5px;
+    padding-right: 5px;
+}
+
+#gc-user-bar a {
+    color: #e60000;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+#gc-game-container {
+    background: #f9f9f9;
+    border: 3px solid #ffcc00;
+    padding: 25px;
+    border-radius: 15px;
+    max-width: 500px;
+    margin: 20px auto;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+#gc-auth-tabs {
+    display: flex;
+    border-bottom: 2px solid #ddd;
+    margin-bottom: 25px;
+    border-radius: 10px 10px 0 0;
+    overflow: hidden;
+}
+
+#gc-auth-tabs button {
+    flex: 1;
+    padding: 15px;
+    border: none;
+    background: #eee;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 16px;
+    transition: 0.3s;
+}
+
+#gc-auth-tabs button.active {
+    background: #ffcc00;
+    color: #000;
+    border-bottom: 3px solid #000;
+}
+
+.gc-login-box {
+    text-align: left;
+    background: #fff;
+    padding: 20px;
+    border-radius: 10px;
+    border: 1px solid #eee;
+}
+
+.gc-login-box label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: bold;
+    font-size: 14px;
+    color: #333;
+}
+
+.gc-login-box input[type="text"],
+.gc-login-box input[type="password"],
+.gc-login-box input[type="email"] {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 20px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    box-sizing: border-box;
+    font-size: 16px;
+}
+
+.gc-login-box input[type="submit"],
+.gc-button {
+    background: #000 !important;
+    color: #ffcc00 !important;
+    border: none !important;
+    padding: 15px !important;
+    font-weight: bold !important;
+    border-radius: 6px !important;
+    cursor: pointer !important;
+    text-transform: uppercase !important;
+    width: 100% !important;
+    font-size: 16px !important;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    transition: 0.2s;
+    display: inline-block;
+    text-align: center;
+}
+
+.gc-button:hover,
+.gc-login-box input[type="submit"]:hover {
+    background: #222 !important;
+    transform: translateY(-2px);
+}
+
+.gc-text-center {
+    text-align: center;
+}
+
+.gc-mt-15 {
+    margin-top: 15px;
+}
+
+.gc-w-100 {
+    width: 100%;
+}
+
+.gc-success-msg {
+    color: green;
+}
+
+.gc-error-msg {
+    color: red;
+    font-weight: bold;
+}
+
+.gc-lost-password-link {
+    color: #000;
+    font-size: 13px;
+    text-decoration: none;
+}
+
+.gc-hidden, .auth-view.gc-hidden {
+    display: none !important;
+}
+
+@media (max-width: 600px) {
+    #gc-user-bar {
+        margin: 0 0 10px 0 !important;
+        width: 100% !important;
+        box-sizing: border-box;
+        padding: 10px;
+        border-radius: 0;
+    }
+
+    #gc-game-container {
+        padding: 15px 10px !important; 
+        margin: 0 auto !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
+
+    #gc-outer-wrapper {
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+}

@@ -10,6 +10,10 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+define('GC_PATH', plugin_dir_path(__FILE__));
+
+require_once GC_PATH . 'includes/auth-handlers.php';
+
 function cycle_game_enqueue_scripts() {
     // Externe bibliotheken
     wp_enqueue_script('canvas-confetti', 'https://cdnjs.cloudflare.com/ajax/libs/canvas-confetti/1.9.3/confetti.browser.min.js', array(), '1.9.3', true);
@@ -25,15 +29,198 @@ function cycle_game_enqueue_scripts() {
     // Doorgeven van variabelen naar JS
     wp_localize_script('cycle-game-script', 'cycleGameData', array(
         'ajax_url' => admin_url('admin-ajax.php'),
-        'csv_url'  => 'https://raw.githubusercontent.com/JarneTackaert/Game-Cycle/main/data/riders.csv'
+        'csv_url'  => 'https://raw.githubusercontent.com/JarneTackaert/Game-Cycle/main/data/riders.csv',
+        'current_user_name' => is_user_logged_in() ? wp_get_current_user()->display_name : ''
     ));
 }
 add_action('wp_enqueue_scripts', 'cycle_game_enqueue_scripts');
 
 function cycle_game_shortcode() {
+    if (!is_user_logged_in()) {
+        ob_start();
+        $login_error = isset($_GET['login_error']) ? 'Fout: Gebruikersnaam of wachtwoord is onjuist.' : '';
+        ?>
+        <div id="gc-game-container">
+            <?php 
+            $action = isset($_GET['action']) ? $_GET['action'] : '';
+            $rp_key = isset($_GET['key']) ? $_GET['key'] : '';
+            $rp_login = isset($_GET['login']) ? $_GET['login'] : '';
+            $is_reset = ($action === 'rp' || $action === 'resetpass') && !empty($rp_key) && !empty($rp_login);
+            ?>
+            <div id="gc-auth-tabs" <?php echo $is_reset ? 'style="display:none;"' : ''; ?>>
+                <button onclick="showAuth('login')" id="btn-login-tab" class="active">Inloggen</button>
+                <button onclick="showAuth('register')" id="btn-register-tab">Registreren</button>
+            </div>
+
+            <div id="gc-login-view" class="auth-view <?php echo $is_reset ? 'gc-hidden' : ''; ?>">
+                <h3>🚴 Welkom terug!</h3>
+                <?php if ($login_error): ?><p class="gc-error-msg"><?php echo $login_error; ?></p><?php endif; ?>
+                <div class="gc-login-box">
+                    <?php
+                    wp_login_form(array(
+                            'redirect' => get_permalink(),
+                            'form_id' => 'gc-loginform',
+                            'label_username' => 'Gebruikersnaam',
+                            'label_password' => 'Wachtwoord',
+                            'label_remember' => 'Onthoud mij',
+                            'label_log_in' => 'Inloggen',
+                            'remember' => true,
+                            'value_remember' => true,
+                    ));
+                    ?>
+                    <p class="gc-text-center gc-mt-15">
+                        <a href="javascript:void(0)" onclick="showAuth('lostpassword')" class="gc-lost-password-link">Wachtwoord vergeten?</a>
+                    </p>
+                </div>
+            </div>
+
+            <div id="gc-lostpassword-view" class="auth-view gc-hidden">
+                <h3>🔑 Wachtwoord vergeten</h3>
+                <p>Vul je gebruikersnaam of e-mailadres in. Je ontvangt een e-mail met een link om een nieuw wachtwoord aan te maken.</p>
+                <div id="lost-msg"></div>
+                <div class="gc-login-box">
+                    <label for="lost-user">Gebruikersnaam of e-mail</label>
+                    <input type="text" id="lost-user">
+                    <button onclick="doLostPassword()" class="gc-button gc-w-100">Wachtwoord herstellen</button>
+                    <p class="gc-text-center gc-mt-15">
+                        <a href="javascript:void(0)" onclick="showAuth('login')" class="gc-lost-password-link">Terug naar inloggen</a>
+                    </p>
+                </div>
+            </div>
+
+            <div id="gc-register-view" class="auth-view gc-hidden">
+                <h3>🏁 Maak een account aan</h3>
+                <p>Vul je gegevens in om mee te kunnen spelen.</p>
+                <div id="reg-msg"></div>
+                <div class="gc-login-box">
+                    <label for="reg-user">Gebruikersnaam</label>
+                    <input type="text" id="reg-user">
+                    <label for="reg-email">E-mailadres</label>
+                    <input type="email" id="reg-email">
+                    <label for="reg-pass">Wachtwoord</label>
+                    <input type="password" id="reg-pass">
+                    <button onclick="doRegister()" class="gc-button gc-w-100">Registreren</button>
+                </div>
+            </div>
+
+            <div id="gc-resetpassword-view" class="auth-view <?php echo $is_reset ? '' : 'gc-hidden'; ?>">
+                <h3>🆕 Nieuw wachtwoord instellen</h3>
+                <p>Kies een nieuw wachtwoord voor je account.</p>
+                <div id="reset-msg"></div>
+                <div class="gc-login-box">
+                    <input type="hidden" id="rp-key" value="<?php echo esc_attr($rp_key); ?>">
+                    <input type="hidden" id="rp-login" value="<?php echo esc_attr($rp_login); ?>">
+                    
+                    <label for="rp-pass1">Nieuw wachtwoord</label>
+                    <input type="password" id="rp-pass1">
+                    
+                    <label for="rp-pass2">Bevestig nieuw wachtwoord</label>
+                    <input type="password" id="rp-pass2">
+                    
+                    <button onclick="doResetPassword()" class="gc-button gc-w-100">Wachtwoord opslaan</button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function showAuth(view) {
+                document.getElementById('gc-login-view').classList.add('gc-hidden');
+                document.getElementById('gc-register-view').classList.add('gc-hidden');
+                document.getElementById('gc-lostpassword-view').classList.add('gc-hidden');
+                document.getElementById('gc-resetpassword-view').classList.add('gc-hidden');
+
+                const targetView = document.getElementById('gc-' + view + '-view');
+                if (targetView) targetView.classList.remove('gc-hidden');
+                
+                document.getElementById('btn-login-tab').className = (view === 'login' || view === 'lostpassword') ? 'active' : '';
+                document.getElementById('btn-register-tab').className = view === 'register' ? 'active' : '';
+
+                if (view === 'lostpassword' || view === 'resetpassword') {
+                    document.getElementById('gc-auth-tabs').style.display = 'none';
+                } else {
+                    document.getElementById('gc-auth-tabs').style.display = 'flex';
+                }
+            }
+
+            function doResetPassword() {
+                const fd = new FormData();
+                fd.append('action', 'gc_reset_password');
+                fd.append('key', document.getElementById('rp-key').value);
+                fd.append('login', document.getElementById('rp-login').value);
+                fd.append('pass1', document.getElementById('rp-pass1').value);
+                fd.append('pass2', document.getElementById('rp-pass2').value);
+
+                fetch(cycleGameData.ajax_url, {
+                    method: 'POST',
+                    body: fd
+                })
+                .then(r => r.json())
+                .then(r => {
+                    const msgDiv = document.getElementById('reset-msg');
+                    if (r.success) {
+                        msgDiv.innerHTML = '<p class="gc-success-msg">' + r.data + '</p>';
+                        setTimeout(() => showAuth('login'), 3000);
+                    } else {
+                        msgDiv.innerHTML = '<p class="gc-error-msg">' + r.data + '</p>';
+                    }
+                });
+            }
+
+            function doLostPassword() {
+                const fd = new FormData();
+                fd.append('action', 'gc_lost_password');
+                fd.append('user_login', document.getElementById('lost-user').value);
+
+                fetch(cycleGameData.ajax_url, {
+                    method: 'POST',
+                    body: fd
+                })
+                .then(r => r.json())
+                .then(r => {
+                    const msgDiv = document.getElementById('lost-msg');
+                    if (r.success) {
+                        msgDiv.innerHTML = '<p class="gc-success-msg">' + r.data + '</p>';
+                    } else {
+                        msgDiv.innerHTML = '<p class="gc-error-msg">' + r.data + '</p>';
+                    }
+                });
+            }
+
+            function doRegister() {
+                const fd = new FormData();
+                fd.append('action', 'gc_register_user');
+                fd.append('user', document.getElementById('reg-user').value);
+                fd.append('email', document.getElementById('reg-email').value);
+                fd.append('pass', document.getElementById('reg-pass').value);
+
+                fetch(cycleGameData.ajax_url, {
+                    method: 'POST',
+                    body: fd
+                })
+                .then(r => r.json())
+                .then(r => {
+                    const msgDiv = document.getElementById('reg-msg');
+                    if (r.success) {
+                        msgDiv.innerHTML = '<p class="gc-success-msg">' + r.data + '</p>';
+                        setTimeout(() => location.reload(), 2000);
+                    } else {
+                        msgDiv.innerHTML = '<p class="gc-error-msg">' + r.data + '</p>';
+                    }
+                });
+            }
+        </script>
+        <?php
+        return ob_get_clean();
+    }
     ob_start();
+    $current_user = wp_get_current_user();
     ?>
-    <div class="wrap cycle-game-plugin-container">
+    <div id="gc-outer-wrapper">
+        <div id="gc-user-bar">
+            Ingelogd als: <strong><?php echo esc_html($current_user->display_name); ?></strong> |
+            <a href="<?php echo wp_logout_url(get_permalink()); ?>">Uitloggen</a>
+        </div>
+        <div class="wrap cycle-game-plugin-container">
         <header>
             <div class="tag">Classic Mode · 2026 season</div>
             <h1>CYCLE</h1>
@@ -57,15 +244,15 @@ function cycle_game_shortcode() {
 
             <div class="boards">
                 <div class="scoreboard">
-                    <h3>🏆 General standings <span class="sub2">All time</span></h3>
-                    <div class="sbrow gen head2"><span>#</span><span>Player</span><span
-                            style="text-align:right">Found</span><span style="text-align:right">Streak</span></div>
+                    <h3>🏆 Algemeen klassement <span class="sub2">Aller tijden</span></h3>
+                    <div class="sbrow gen head2"><span>#</span><span>Speler</span><span
+                            style="text-align:right">Renners</span><span style="text-align:right">Streak</span></div>
                     <div id="genBoard"></div>
                 </div>
                 <div class="scoreboard">
-                    <h3>📅 Daily standings <span class="sub2" id="dayLabel">Today</span></h3>
-                    <div class="sbrow day head2"><span>#</span><span>Player</span><span
-                            style="text-align:right">Guesses</span></div>
+                    <h3>📅 Dagklassement <span class="sub2" id="dayLabel">Vandaag</span></h3>
+                    <div class="sbrow day head2"><span>#</span><span>Speler</span><span
+                            style="text-align:right">Beurten</span></div>
                     <div id="dayBoard"></div>
                 </div>
             </div>
@@ -108,6 +295,7 @@ function cycle_game_shortcode() {
         </div>
 
         <div class="err" id="err"></div>
+    </div>
     </div>
     <script>
         // Start het spel zodra de pagina geladen is
