@@ -30,7 +30,7 @@ jobs:
         run: |
           source "$HOME/.sdkman/bin/sdkman-init.sh"
           kotlin WorldTourTeamsScraper.main.kts "${{ github.event.inputs.season }}"
-      - name: Commit the CSV to data/riders.csv
+     - name: Commit the CSV to data/riders.csv
         run: |
           mkdir -p data
           cp worldtour_riders_*.csv data/riders.csv
@@ -38,4 +38,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add data/riders.csv
           git diff --staged --quiet || git commit -m "Update rider data ($(date -u +%Y-%m-%d))"
+          git pull --rebase origin main
           git push
