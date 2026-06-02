@@ -235,7 +235,6 @@ function newGame() {
     const inp = document.getElementById('guess');
     inp.value = '';
     inp.disabled = false;
-    document.getElementById('counter').textContent = POOL.length + ' wielrenners beschikbaar';
     applyGrid();
     renderBoards();
     closeDrop();
