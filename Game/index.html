@@ -236,6 +236,13 @@ function ageBand(age) {
   return lo + "-" + (lo + 4);
 }
 
+  // CSV uses M/F; the game's tabs expect Male/Female.
+function normGender(g) {
+  if (g === "M") return "Male";
+  if (g === "F") return "Female";
+  return g;
+}
+
 // Map one CSV row -> the rider object shape the game uses.
 function toRider(row) {
   const age = parseInt(row["Age"], 10) || null;
@@ -248,7 +255,7 @@ function toRider(row) {
     team:        row["Team"],
     circuit:     row["Team tier"],             // WorldTour / ProTour
     specialty:   row["Specialty 1"] || row["Specialty 2"] || "",
-    gender:      gender:      ({ M: "Male", F: "Female" })[row["Gender"]] || row["Gender"],  // CSV uses M/F
+    gender:      normGender(row["Gender"]),
     // hint data:
     wins:        parseInt(row["Wins"], 10) || 0,
     topResults:  [row["Top result 1"], row["Top result 2"], row["Top result 3"]].filter(Boolean),
