@@ -87,7 +87,7 @@
   .sbrow{display:grid;align-items:center;padding:10px 18px;border-bottom:1px solid var(--line);font-size:13px}
   .sbrow:last-child{border-bottom:none}
   .sbrow.gen{grid-template-columns:28px 1fr auto auto;gap:12px}
-  .sbrow.day{grid-template-columns:28px 1fr auto;gap:12px}
+  .sbrow.day{grid-template-columns:28px 1fr auto auto;gap:12px}
   .sbrow.head2{background:var(--panel2);font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:600;padding:8px 18px}
   .sbrow.me{background:#fff4f0;font-weight:700}
   .rank{font-weight:700;color:var(--muted);text-align:center}
@@ -126,8 +126,24 @@
   .hp-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .4s ease}
   .hp-done{font-size:11px;color:var(--green);font-weight:600}
 
-  /* ── Responsive scoreboards: boards auto-stack via .boards auto-fit grid ── */
-
+  /* ── How to play / rules ── */
+  .rules{max-width:760px;margin:0 auto 22px;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.05);overflow:hidden}
+  .rules summary{list-style:none;cursor:pointer;padding:14px 18px;font-size:14px;font-weight:700;
+    display:flex;align-items:center;gap:8px}
+  .rules summary::-webkit-details-marker{display:none}
+  .rules summary .chev{margin-left:auto;color:var(--muted);font-size:12px;transition:transform .2s ease}
+  .rules[open] summary .chev{transform:rotate(180deg)}
+  .rules .body{padding:0 18px 18px;font-size:13.5px;line-height:1.55;color:var(--txt)}
+  .rules .body h4{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);
+    margin:14px 0 6px;font-weight:700}
+  .rules .body p{margin:0 0 8px;color:var(--muted)}
+  .rules .body ul{margin:0 0 8px 18px;padding:0}
+  .rules .body li{margin-bottom:5px;color:var(--muted)}
+  .rules .body b{color:var(--txt)}
+  .rules .body .chip{display:inline-block;border-radius:4px;padding:1px 7px;font-size:11px;font-weight:700;color:#fff}
+  .rules .body .chip.green{background:var(--green)}
+  .rules .body .chip.red{background:var(--red)}
 </style>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -153,6 +169,55 @@
   </header>
   <p class="sub">Guess the mystery pro cyclist. Green means a match.</p>
 
+  <!-- ── How to play ── -->
+  <details class="rules" id="rules">
+    <summary>📖 How to play <span class="chev">▼</span></summary>
+    <div class="body">
+      <p>Guess the mystery professional cyclist. Each guess is scored column by column:
+        a <span class="chip green">green</span> cell means that attribute matches the mystery
+        rider, a <span class="chip red">red</span> cell means it doesn't.</p>
+
+      <h4>Making a guess</h4>
+      <p>Start typing a rider's name (or team) in the search box and pick from the list. Each guess
+        adds a row comparing it to the mystery rider across these columns: rider, age band,
+        nationality, team, circuit and specialty (plus gender when the "All" pool is selected).
+        Age is matched in 5-year bands (e.g. a 27-year-old falls in the 25–29 band).</p>
+
+      <h4>Choosing a pool</h4>
+      <ul>
+        <li><b>Men / Women / All</b> — pick which set of riders the mystery rider is drawn from.</li>
+        <li><b>All riders / Top ranked only</b> — "Top ranked only" limits the pool to UCI-ranked
+          riders (the top 250 per gender, so 500 for All).</li>
+      </ul>
+
+      <h4>Hints</h4>
+      <p>The more you miss, the more help you get. Hints unlock after a number of <b>wrong</b> guesses:</p>
+      <ul>
+        <li><b>3 wrong</b> → career victory count 🏆</li>
+        <li><b>5 wrong</b> → notable top results 🥇</li>
+        <li><b>8 wrong</b> → list of previous teams 🔄</li>
+      </ul>
+      <p>A progress bar tells you how many wrong guesses remain until the next hint.</p>
+
+      <h4>Today's rider vs Practice</h4>
+      <ul>
+        <li><b>Today's rider</b> — one shared daily puzzle. Everyone playing the same pool gets the
+          same rider that day, and the daily standings rank players by fewest guesses. You can only
+          solve it once per day; your result stays put even if you refresh the page.</li>
+        <li><b>Practice</b> — unlimited random riders. Solves count toward your "found" total but
+          never affect your streak.</li>
+      </ul>
+
+      <h4>Streak</h4>
+      <p>Your 🔥 streak counts consecutive days you solve "Today's rider". Solve it today and your
+        streak goes up by one. Miss a day, or give up, and it resets to 0.</p>
+
+      <h4>Giving up</h4>
+      <p>"I give up" is available on the daily puzzle while it's still live. It reveals the answer,
+        breaks your streak, and the round doesn't count toward the standings.</p>
+    </div>
+  </details>
+
   <div style="text-align:center">
     <div class="streak" id="streak"><span class="flame">🔥</span> <span id="streakNum">0</span> <span class="lab">day streak</span></div>
   </div>
@@ -175,7 +240,7 @@
       </div>
       <div class="scoreboard">
         <h3>📅 Daily standings <span class="sub2" id="dayLabel">Today</span></h3>
-        <div class="sbrow day head2"><span>#</span><span>Player</span><span style="text-align:right">Guesses</span></div>
+        <div class="sbrow day head2"><span>#</span><span>Player</span><span style="text-align:right">Guesses</span><span style="text-align:right">Streak</span></div>
         <div id="dayBoard"></div>
       </div>
     </div>
@@ -289,14 +354,66 @@ async function loadRiders() {
 let ALL=[], POOL=[], pool='Male', answer, guesses=[], activeIdx=-1, filtered=[];
 let mode='daily';            // 'daily' or 'practice'
 let rankFilter='all';        // 'all' or 'ranked' (top-250-per-gender; 500 for All)
-let streak=0;                // consecutive days solved (session mock; real value comes from backend/login)
+let streak=0;                // consecutive days solved
 let lastSolvedDay=null;      // date-string of last daily solve, to gate streak + one-solve-per-day
 let gaveUpDay=null;          // date-string of a daily give-up, to lock the round for that day
-let totalFound=0;            // riders found all-time (session mock)
-/* Remembers resolved daily rounds for this session, keyed by gender×rank, so switching
+let totalFound=0;            // riders found all-time
+/* Remembers resolved daily rounds, keyed by gender×rank, so switching
    modes/tabs and returning can't reset a give-up or re-open a solved round.
    Shape: dailyResolved[dailyTag()] = {date, outcome:'solved'|'gaveup', rider, guesses} */
 let dailyResolved={};
+
+/* =====================================================================
+   PERSISTENCE
+   The session state above is now mirrored to localStorage so that a
+   refresh keeps a solved / given-up daily round (and the streak) intact.
+   On the real site this lives server-side behind login; localStorage is
+   the standalone-page equivalent and is safe to swap out later.
+   ===================================================================== */
+const STORE_KEY = 'cycle.state.v1';
+
+function savePersist(){
+  try{
+    const payload = {
+      streak, lastSolvedDay, gaveUpDay, totalFound, lastDailyGuesses,
+      dailyResolved
+    };
+    localStorage.setItem(STORE_KEY, JSON.stringify(payload));
+  }catch(e){ /* storage unavailable (private mode / disabled) — ignore */ }
+}
+
+function loadPersist(){
+  try{
+    const raw = localStorage.getItem(STORE_KEY);
+    if(!raw) return;
+    const p = JSON.parse(raw);
+    if(typeof p.streak === 'number') streak = p.streak;
+    if(typeof p.totalFound === 'number') totalFound = p.totalFound;
+    if(typeof p.lastDailyGuesses === 'number') lastDailyGuesses = p.lastDailyGuesses;
+    lastSolvedDay = p.lastSolvedDay || null;
+    gaveUpDay = p.gaveUpDay || null;
+    dailyResolved = (p.dailyResolved && typeof p.dailyResolved==='object') ? p.dailyResolved : {};
+
+    /* Stale-streak correction: if the last solve wasn't today or yesterday,
+       the player has missed at least one day, so the streak is broken.
+       Done at load time so the displayed streak is honest after a refresh. */
+    if(lastSolvedDay && lastSolvedDay!==todayKey() && lastSolvedDay!==yesterdayKey()){
+      streak = 0;
+    }
+  }catch(e){ /* corrupt / unavailable storage — start fresh */ }
+}
+
+/* Drop any stored daily rounds that aren't for today. Keeps localStorage from
+   accumulating old rounds and makes sure yesterday's solved round doesn't
+   restore today. */
+function pruneOldDailyRounds(){
+  const today = todayKey();
+  let changed = false;
+  Object.keys(dailyResolved).forEach(k=>{
+    if(!dailyResolved[k] || dailyResolved[k].date!==today){ delete dailyResolved[k]; changed=true; }
+  });
+  if(changed) savePersist();
+}
 
 /* ---- Daily puzzle: same rider for everyone on a given date, per pool ----
    Deterministic seed from the date so the "daily standings" are comparable.
@@ -325,17 +442,19 @@ const DEMO_GENERAL=[
   {name:'BergopBram', streak:6, found:15},
 ];
 const DEMO_DAILY=[
-  {name:'KoersKenneth', g:2},
-  {name:'PelotonPaula', g:3},
-  {name:'Wout_fan_88', g:3},
-  {name:'SprintSofie', g:4},
-  {name:'KasseiKoen', g:5},
-  {name:'BiddonVeloo', g:6},
+  {name:'KoersKenneth', g:2, streak:31},
+  {name:'PelotonPaula', g:3, streak:27},
+  {name:'Wout_fan_88', g:3, streak:42},
+  {name:'SprintSofie', g:4, streak:12},
+  {name:'KasseiKoen', g:5, streak:9},
+  {name:'BiddonVeloo', g:6, streak:18},
 ];
 
 function load(){
     ALL = RIDERS;
     document.getElementById('dayLabel').textContent = todayKey();
+    loadPersist();
+    pruneOldDailyRounds();
     renderStreak();
     setPool('Male');
 }
@@ -406,7 +525,7 @@ function newGame(){
 
   // In daily mode, if today's round for THIS pool (gender×rank) is already
   // resolved, restore it (don't start a new round — that's how the give-up
-  // lock was being bypassed).
+  // lock was being bypassed, and it's also how refresh-persistence works).
   if(mode==='daily'){
     const rec = dailyResolved[dailyTag()];
     if(rec && rec.date===todayKey()){
@@ -434,7 +553,8 @@ function newGame(){
 }
 
 /* Rebuild the finished panel for an already-resolved daily round (solved or gave up).
-   Input stays locked and the give-up button stays hidden, regardless of mode-switching. */
+   Input stays locked and the give-up button stays hidden, regardless of mode-switching
+   or page refresh. */
 function restoreResolvedDaily(rec){
   answer = rec.rider;
   guesses = [];
@@ -475,6 +595,21 @@ function updateGiveUp(roundOver){
 
 function renderStreak(){ document.getElementById('streakNum').textContent = streak; }
 
+/* Is today's daily round solved for the current pool? True both for a live solve
+   this session and for a solved round restored from storage after a refresh. */
+function dailySolvedToday(){
+  if(lastSolvedDay===todayKey()) return true;
+  const rec = dailyResolved[dailyTag()];
+  return !!(rec && rec.date===todayKey() && rec.outcome==='solved');
+}
+
+/* How many guesses your daily solve took (live count, restored record, or fallback). */
+function myDailyGuesses(){
+  const rec = dailyResolved[dailyTag()];
+  if(rec && rec.date===todayKey() && rec.outcome==='solved') return rec.guesses;
+  return guesses.length || lastDailyGuesses;
+}
+
 function renderBoards(){
   // Play again only makes sense in practice; daily has one rider per day
   document.getElementById('againBtn').style.display = (mode==='practice') ? '' : 'none';
@@ -491,15 +626,17 @@ function renderBoards(){
       '<span class="sbflame">🔥 '+p.streak+'</span>'+
     '</div>').join('');
 
-  // DAILY: demo players + your today's result (only once solved today), sorted by fewest guesses
+  // DAILY: demo players + your today's result (once solved today, live OR restored),
+  // sorted by fewest guesses. Now also shows the streak column, mirroring the general board.
   const day = DEMO_DAILY.map(p=>({...p}));
-  if(mode==='daily' && lastSolvedDay===todayKey()) day.push({name:'You', g:guesses.length||lastDailyGuesses, me:true});
+  if(mode==='daily' && dailySolvedToday()) day.push({name:'You', g:myDailyGuesses(), streak:streak, me:true});
   day.sort((a,b)=> a.g-b.g);
   document.getElementById('dayBoard').innerHTML = day.map((p,i)=>
     '<div class="sbrow day'+(p.me?' me':'')+'">'+
       '<span class="rank'+(i<3?' top':'')+'">'+(i+1)+'</span>'+
       '<span class="sbname">'+p.name+'</span>'+
       '<span class="sbval">'+p.g+' <span class="u">guess'+(p.g>1?'es':'')+'</span></span>'+
+      '<span class="sbflame">🔥 '+(p.streak||0)+'</span>'+
     '</div>').join('');
 }
 let lastDailyGuesses=0;
@@ -579,7 +716,7 @@ function submit(rider){
 
 /* Update streak + totals on a solve. Daily mode only counts once per day and
    drives the streak; practice solves add to "found" but never the streak.
-   (Real persistence happens server-side via login; this is the session mock.) */
+   Persisted to localStorage so a refresh keeps everything. */
 function recordWin(){
   totalFound++;
   if(mode==='daily' && lastSolvedDay!==todayKey()){
@@ -591,10 +728,12 @@ function recordWin(){
   }
   renderStreak();
   renderBoards();
+  savePersist();
 }
 
 /* Give up: reveal the answer, break the streak, and do NOT count toward rankings.
-   No confetti, no totalFound increment, no daily-board entry. Locks the day. */
+   No confetti, no totalFound increment, no daily-board entry. Locks the day,
+   and the lock survives a refresh via localStorage. */
 function giveUp(){
   const inp=document.getElementById('guess'); inp.disabled=true;
   document.getElementById('giveup').classList.add('hide');
@@ -610,6 +749,7 @@ function giveUp(){
   document.getElementById('win').classList.add('show');
   window.scrollTo({top:0, behavior:'smooth'});
   renderBoards();
+  savePersist();
 }
 
 const CONFETTI_COLORS=['#d6232a','#e2574b','#2ea043','#f0a830','#ffffff'];
