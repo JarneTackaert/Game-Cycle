@@ -6,8 +6,9 @@
  * Scrapes every UCI WorldTour and ProTour team (men + women) for a given
  * season. For each team, extracts every rider's: name, nationality, age,
  * specialty, date/place of birth, height, weight, career wins, top 3
- * results, previous teams, and UCI points scored in the PREVIOUS season
- * (season - 1).
+ * results, previous teams, and their CURRENT position in the UCI individual
+ * World Ranking (top 250 men + top 250 women); riders outside the top 250
+ * have a blank rank.
  *
  * Run:
  *   kotlin WorldTourTeamsScraper.main.kts 2026
@@ -64,7 +65,7 @@ data class RiderRow(
     val height: String,
     val weight: String,
     val wins: String,
-    val uciPointsPrevSeason: String,
+    val uciRank: String,
     val topResults: List<String>,
     val previousTeams: List<String>,
     val specialties: List<String>,
@@ -249,56 +250,55 @@ fun getRiderDetails(riderSlug: String): RiderDetails {
 }
 
 // ────────────────────────────────────────────────────────────────
-// UCI points for a specific season
+// UCI individual ranking — top N per gender (slug -> rank position)
 // ────────────────────────────────────────────────────────────────
 
 /**
- * Fetch the UCI points a rider scored in [season].
+ * Fetch the top [topN] riders of one UCI individual ranking and return a
+ * slug -> rank map. [rankingParam] selects the ranking:
+ *   "uci-individual"     -> men's UCI World Ranking
+ *   "uci-individual-we"  -> women's UCI World Ranking
  *
- * PCS publishes a per-season points breakdown at:
- *   rider/<slug>/statistics/points-per-season
- *
- * The page renders a table whose rows pair a season (year) with the points
- * scored, split by points category (PCS / UCI / etc.) via column headers.
- * We locate the row for [season] and read the value under the "UCI" column.
- *
- * Layout (typical):
- *   <table class="basic">
- *     <thead><tr><th>Season</th><th>Points</th><th>PCS</th><th>UCI</th>…</tr></thead>
- *     <tbody>
- *       <tr><td><a href="rider/…/2025">2025</a></td><td>…</td><td>…</td><td>1234</td>…</tr>
- *       …
- *     </tbody>
- *   </table>
- *
- * Returns "" if the season row or UCI column can't be found.
+ * The page shows 100 riders per request, paginated via `offset` (0,100,200…).
+ * No `date` is sent, so PCS returns the latest published ranking (recomputed
+ * each Tuesday) — meaning this stays current whenever the scraper runs.
  */
-fun getUciPointsForSeason(riderSlug: String, season: Int): String {
-    val doc = fetch("rider/$riderSlug/statistics/points-per-season")
-
-    val table = doc.safe("table.basic").firstOrNull() ?: return ""
-
-    // Find the index of the "UCI" column from the header row.
-    val headerCells = table.safe("thead th")
-        .ifEmpty { table.safe("thead tr td") }
-    val uciColIdx = headerCells.indexOfFirst {
-        it.text.trim().equals("UCI", ignoreCase = true)
+fun getUciRanking(rankingParam: String, topN: Int = 250): Map<String, Int> {
+    val result = LinkedHashMap<String, Int>()
+    var offset = 0
+    while (offset < topN) {
+        val doc = fetch("rankings.php?p=$rankingParam&offset=$offset")
+        val rows = doc.safe("table.basic tbody tr")
+        if (rows.isEmpty()) break
+        for (row in rows) {
+            val rank = row.safe("td").firstOrNull()?.text?.trim()?.toIntOrNull() ?: continue
+            val slug = row.riderSlug() ?: continue
+            if (rank <= topN) result.putIfAbsent(slug, rank)
+        }
+        offset += 100
+        Thread.sleep(REQUEST_DELAY_MS)
     }
-    if (uciColIdx < 0) return ""
+    return result
+}
 
-    // Find the body row whose first cell matches the target season.
-    val seasonStr = season.toString()
-    val row = table.safe("tbody tr").firstOrNull { tr ->
-        val firstCell = tr.safe("td").firstOrNull()?.text?.trim().orEmpty()
-        firstCell == seasonStr || firstCell.startsWith(seasonStr)
-    } ?: return ""
+/**
+ * Build a single slug -> rank map covering both the men's and women's UCI
+ * top [topN]. Slugs are unique across genders, so one merged map is safe.
+ */
+fun getUciRankings(topN: Int = 250): Map<String, Int> {
+    System.err.println("Fetching men's UCI ranking (top $topN) ...")
+    val men = getUciRanking("uci-individual", topN)
+    System.err.println("  ${men.size} men ranked.")
 
-    val cells = row.safe("td")
-    val raw = cells.getOrNull(uciColIdx)?.text?.trim().orEmpty()
+    System.err.println("Fetching women's UCI ranking (top $topN) ...")
+    val women = getUciRanking("uci-individual-we", topN)
+    System.err.println("  ${women.size} women ranked.")
 
-    // Normalise: keep digits and a decimal separator, drop stray chars.
-    val cleaned = raw.replace(Regex("[^0-9.]"), "")
-    return cleaned
+    val merged = LinkedHashMap<String, Int>()
+    merged.putAll(men)
+    merged.putAll(women)
+    System.err.println("UCI ranking: ${merged.size} ranked riders total.")
+    return merged
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -360,7 +360,7 @@ fun scrapeTeam(teamUrl: String, gender: String, tier: String): List<RiderRow> {
             height = "",
             weight = "",
             wins = "",
-            uciPointsPrevSeason = "",
+            uciRank = "",
             topResults = emptyList(),
             previousTeams = emptyList(),
             specialties = specialty[slug] ?: emptyList(),
@@ -381,9 +381,11 @@ fun csvCell(s: String): String =
 // ────────────────────────────────────────────────────────────────
 
 val season = args.firstOrNull()?.toIntOrNull() ?: 2026
-val prevSeason = season - 1
 System.err.println("Scraping WorldTour & ProTour teams for $season ...")
-System.err.println("UCI points will be collected for the previous season ($prevSeason).")
+System.err.println("UCI ranking positions will be collected for the top 250 men and top 250 women.")
+
+// ── UCI ranking: fetch once, look up per rider later (no extra per-rider HTTP) ──
+val uciRanks = getUciRankings(250)
 
 val allEntries = mutableListOf<TeamEntry>()
 
@@ -435,14 +437,8 @@ val detailed = all.mapIndexed { idx, r ->
     }
     Thread.sleep(REQUEST_DELAY_MS)
 
-    val uciPrev = try {
-        getUciPointsForSeason(r.slug, prevSeason)
-    } catch (e: Exception) {
-        System.err.println("  ! ${r.slug} (uci $prevSeason): ${e.message}")
-        ""
-    }
+    val uciRank = uciRanks[r.slug]?.toString() ?: ""
     if ((idx + 1) % 25 == 0) System.err.println("  ... ${idx + 1}/${all.size}")
-    Thread.sleep(REQUEST_DELAY_MS)
 
     val currentTeamLower = r.team.lowercase()
     val previousTeams = details.allTeams
@@ -454,7 +450,7 @@ val detailed = all.mapIndexed { idx, r ->
         height = details.height,
         weight = details.weight,
         wins = details.wins,
-        uciPointsPrevSeason = uciPrev,
+        uciRank = uciRank,
         topResults = details.topResults,
         previousTeams = previousTeams,
     )
@@ -471,7 +467,7 @@ out.bufferedWriter().use { w ->
     val prevTeamHeaders = (1..maxPrevTeams).joinToString(",") { "Previous team $it" }
 
     w.write("Gender,Team tier,Team,Rider,Nationality,Age,Date of birth,Place of birth," +
-            "Height (m),Weight (kg),Wins,UCI points $prevSeason," +
+            "Height (m),Weight (kg),Wins,UCI rank," +
             "Top result 1,Top result 2,Top result 3," +
             "$prevTeamHeaders,$specialtyHeaders\n")
 
@@ -483,7 +479,7 @@ out.bufferedWriter().use { w ->
         w.write((listOf(
             r.gender, r.teamTier, r.team, r.name, r.nationality, r.age,
             r.dateOfBirth, r.placeOfBirth, r.height, r.weight, r.wins,
-            r.uciPointsPrevSeason,
+            r.uciRank,
         ) + topCells + prevCells + specCells).joinToString(",") { csvCell(it) })
         w.write("\n")
     }
