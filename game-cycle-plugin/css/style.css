@@ -88,8 +88,99 @@ h1 {
 
 .searchbox {
     position: relative;
+    width: 100%;
+    flex-basis: 100%;
     max-width: 460px;
-    margin: 0 auto 8px
+    margin: 4px auto 0
+}
+
+/* ── How to play / rules ── */
+.rules {
+    max-width: 760px;
+    margin: 0 auto 22px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .05);
+    overflow: hidden
+}
+
+.rules summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 18px;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 8px
+}
+
+.rules summary::-webkit-details-marker {
+    display: none
+}
+
+.rules summary .chev {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 12px;
+    transition: transform .2s ease
+}
+
+.rules[open] summary .chev {
+    transform: rotate(180deg)
+}
+
+.rules .body {
+    padding: 0 18px 18px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--txt)
+}
+
+.rules .body h4 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--accent);
+    margin: 14px 0 6px;
+    font-weight: 700
+}
+
+.rules .body p {
+    margin: 0 0 8px;
+    color: var(--muted)
+}
+
+.rules .body ul {
+    margin: 0 0 8px 18px;
+    padding: 0
+}
+
+.rules .body li {
+    margin-bottom: 5px;
+    color: var(--muted)
+}
+
+.rules .body b {
+    color: var(--txt)
+}
+
+.rules .body .chip {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff
+}
+
+.rules .body .chip.green {
+    background: var(--green)
+}
+
+.rules .body .chip.red {
+    background: var(--red)
 }
 
 #guess {

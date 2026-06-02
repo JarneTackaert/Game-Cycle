@@ -232,6 +232,59 @@ function cycle_game_shortcode()
             </header>
             <p class="sub">Raad de dagelijkse myserieuze renner of renster!</p>
 
+            <!-- ── Hoe te spelen ── -->
+            <details class="rules" id="rules">
+                <summary>📖 Hoe te spelen <span class="chev">▼</span></summary>
+                <div class="body">
+                    <p>Raad de mysterieuze profrenner. Elke gok wordt kolom per kolom beoordeeld:
+                        een <span class="chip green">groene</span> cel betekent dat dat kenmerk overeenkomt met de
+                        mysterierenner, een <span class="chip red">rode</span> cel betekent dat het niet klopt.</p>
+
+                    <h4>Een gok maken</h4>
+                    <p>Begin de naam van een renner (of team) te typen in het zoekveld en kies uit de lijst. Elke gok
+                        voegt een rij toe die de renner vergelijkt met de mysterierenner over deze kolommen: renner,
+                        leeftijd, nationaliteit, team, circuit en specialiteit (plus geslacht wanneer de categorie
+                        "Alle" is geselecteerd). Leeftijd wordt vergeleken in groepen van 5 jaar (een 27-jarige valt
+                        bijvoorbeeld in de groep 25–29).</p>
+
+                    <h4>Een categorie kiezen</h4>
+                    <ul>
+                        <li><b>Mannen / Vrouwen / Alle</b> — kies uit welke groep renners de mysterierenner komt.</li>
+                        <li><b>Alle / Top 250 UCI</b> — "Top 250 UCI" beperkt de groep tot renners met een UCI-klassering
+                            (de top 250 per geslacht, dus 500 bij "Alle").</li>
+                    </ul>
+
+                    <h4>Hints</h4>
+                    <p>Hoe meer je mist, hoe meer hulp je krijgt. Hints worden vrijgegeven na een aantal
+                        <b>foute</b> gokjes:</p>
+                    <ul>
+                        <li><b>3 fout</b> → aantal overwinningen in de carrière 🏆</li>
+                        <li><b>5 fout</b> → opvallende topresultaten 🥇</li>
+                        <li><b>8 fout</b> → lijst van vorige teams 🔄</li>
+                    </ul>
+                    <p>Een voortgangsbalk toont hoeveel foute gokjes je nog hebt tot de volgende hint.</p>
+
+                    <h4>Renner van de dag vs Oefenzone</h4>
+                    <ul>
+                        <li><b>Renner van de dag</b> — één gedeelde dagelijkse puzzel. Iedereen die dezelfde categorie
+                            speelt, krijgt die dag dezelfde renner, en de dagelijkse ranking rangschikt spelers op het
+                            minste aantal gokjes. Je kunt de puzzel maar één keer per dag oplossen; je resultaat blijft
+                            staan, ook als je de pagina ververst.</li>
+                        <li><b>Oefenzone</b> — onbeperkt willekeurige renners. Opgeloste renners tellen mee voor je totaal
+                            "gevonden", maar hebben nooit invloed op je streak.</li>
+                    </ul>
+
+                    <h4>Streak</h4>
+                    <p>Je 🔥 streak telt het aantal opeenvolgende dagen dat je "Renner van de dag" oplost. Los je het
+                        vandaag op, dan gaat je streak met één omhoog. Mis je een dag, of geef je op, dan gaat hij
+                        terug naar 0.</p>
+
+                    <h4>Opgeven</h4>
+                    <p>"Ik geef op..." is beschikbaar bij de dagelijkse puzzel zolang die nog actief is. Geef je op,
+                        dan wordt de renner onthuld, breekt je streak, en wordt de puzzel voor vandaag vergrendeld.</p>
+                </div>
+            </details>
+
             <div style="text-align:center">
                 <div class="streak" id="streak"><span class="flame">🔥</span> <span id="streakNum">0</span> <span
                             class="lab">dagen streak</span>
@@ -265,6 +318,12 @@ function cycle_game_shortcode()
                         <button id="r-ranked" class="seg" onclick="setRankFilter('ranked')">Top 250 UCI</button>
                     </div>
                 </div>
+
+                <!-- Guess field lives inside the settings card so all controls are grouped. -->
+                <div class="searchbox" id="searchbox">
+                    <input id="guess" type="text" placeholder="Typ de naam van een renner…" autocomplete="off"/>
+                    <div class="drop" id="drop"></div>
+                </div>
             </div>
 
             <div class="win" id="win">
@@ -291,10 +350,6 @@ function cycle_game_shortcode()
                 <button class="again" id="againBtn" onclick="newGame()" style="display:none">Opnieuw spelen</button>
             </div>
 
-            <div class="searchbox">
-                <input id="guess" type="text" placeholder="Typ de naam van een wielrenner" autocomplete="off"/>
-                <div class="drop" id="drop"></div>
-            </div>
             <div class="counter" id="counter"></div>
 
             <div class="hints-container" id="hints"></div>
