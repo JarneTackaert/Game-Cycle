@@ -139,7 +139,7 @@
   <!-- ============================================================= -->
   <!-- ▼▼▼  TEST / STAGING ONLY — REMOVE OR COMMENT OUT BEFORE GO-LIVE  ▼▼▼ -->
   <!-- Confetti test button. Lets you verify the win animation without solving. -->
-  <div id="confettiTestBar" style="text-align:center;margin-bottom:14px">
+  <!-- <div id="confettiTestBar" style="text-align:center;margin-bottom:14px">
     <button onclick="fireConfetti()"
       style="background:#fffbe6;border:1px dashed #c99700;color:#8a6a00;padding:8px 18px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer">
       🎉 TEST confetti (staging only)
@@ -151,47 +151,47 @@
   <header>
     <h1>CYCLE.</h1>
   </header>
-  <p class="sub">Guess the mystery pro cyclist. Green means a match.</p>
+  <p class="sub">Raad de dagelijkse myserieuze renner of renster!</p>
 
   <div style="text-align:center">
-    <div class="streak" id="streak"><span class="flame">🔥</span> <span id="streakNum">0</span> <span class="lab">day streak</span></div>
+    <div class="streak" id="streak"><span class="flame">🔥</span> <span id="streakNum">0</span> <span class="lab">dagen streak</span></div>
   </div>
 
   <div class="mode">
-    <button id="m-daily" class="on" onclick="setMode('daily')">Today's rider</button>
-    <button id="m-practice" onclick="setMode('practice')">Practice</button>
+    <button id="m-daily" class="on" onclick="setMode('daily')">Renner van de dag</button>
+    <button id="m-practice" onclick="setMode('practice')">Oefenzone</button>
   </div>
 
   <div class="win" id="win">
-    <h2 id="winTitle">Solved!</h2>
+    <h2 id="winTitle">Alweer een winnaar!</h2>
     <p id="winp"></p>
     <div class="embed" id="embed"></div>
 
     <div class="boards">
       <div class="scoreboard">
-        <h3>🏆 General standings <span class="sub2">All time</span></h3>
-        <div class="sbrow gen head2"><span>#</span><span>Player</span><span style="text-align:right">Found</span><span style="text-align:right">Streak</span></div>
+        <h3>🏆 Algemene ranking <span class="sub2">Aller tijden</span></h3>
+        <div class="sbrow gen head2"><span>#</span><span>Naam Speler</span><span style="text-align:right"># Gevonden renners</span><span style="text-align:right">Streak</span></div>
         <div id="genBoard"></div>
       </div>
       <div class="scoreboard">
-        <h3>📅 Daily standings <span class="sub2" id="dayLabel">Today</span></h3>
-        <div class="sbrow day head2"><span>#</span><span>Player</span><span style="text-align:right">Guesses</span></div>
+        <h3>📅 Dagelijke ranking <span class="sub2" id="dayLabel">Today</span></h3>
+        <div class="sbrow day head2"><span>#</span><span>Naam Speler</span><span style="text-align:right"># Gokjes</span></div>
         <div id="dayBoard"></div>
       </div>
     </div>
 
-    <button class="again" id="againBtn" onclick="newGame()" style="display:none">Play again</button>
+    <button class="again" id="againBtn" onclick="newGame()" style="display:none">Speel opnieuw</button>
   </div>
 
   <div class="tabs">
-    <button id="t-Male" class="on" onclick="setPool('Male')">Men</button>
-    <button id="t-Female" onclick="setPool('Female')">Women</button>
-    <button id="t-All" onclick="setPool('All')">All</button>
+    <button id="t-Male" class="on" onclick="setPool('Male')">Mannen</button>
+    <button id="t-Female" onclick="setPool('Female')">Vrouwen</button>
+    <button id="t-All" onclick="setPool('All')">Alle</button>
   </div>
 
   <div class="tabs" id="rankTabs">
-    <button id="r-all" class="on" onclick="setRankFilter('all')">All riders</button>
-    <button id="r-ranked" onclick="setRankFilter('ranked')">Top ranked only</button>
+    <button id="r-all" class="on" onclick="setRankFilter('all')">Alle Renners</button>
+    <button id="r-ranked" onclick="setRankFilter('ranked')">Top 250 UCI</button>
   </div>
 
   <div class="searchbox">
@@ -204,12 +204,12 @@
   <div id="hintProgress"></div>
 
   <div style="text-align:center;margin:-4px 0 16px">
-    <button id="giveup" class="giveup" onclick="giveUp()">I give up</button>
+    <button id="giveup" class="giveup" onclick="giveUp()">Ik geef op...</button>
   </div>
 
   <div class="legend">
     <span><i class="sw g-green"></i> Match</span>
-    <span><i class="sw g-red"></i> No match</span>
+    <span><i class="sw g-red"></i> Geen match</span>
   </div>
 
   <div class="board">
@@ -357,14 +357,14 @@ function setMode(m){
 
 function cols(){
   const base=[
-    {key:'fullName', label:'Rider', w:'1fr'},
-    {key:'ageBand', label:'Age', w:'1fr'},
-    {key:'nationality', label:'Nationality', w:'1fr'},
+    {key:'fullName', label:'Renner', w:'1fr'},
+    {key:'ageBand', label:'Leeftijd', w:'1fr'},
+    {key:'nationality', label:'Nationaliteit', w:'1fr'},
     {key:'team', label:'Team', w:'1fr'},
     {key:'circuit', label:'Circuit', w:'1fr'},
-    {key:'specialty', label:'Specialty', w:'1fr'},
+    {key:'specialty', label:'Specialiteit', w:'1fr'},
   ];
-  if(pool==='All') base.push({key:'gender', label:'Gender', w:'1fr'});
+  if(pool==='All') base.push({key:'gender', label:'Geslacht', w:'1fr'});
   return base;
 }
 function applyGrid(){
@@ -453,8 +453,8 @@ function restoreResolvedDaily(rec){
   showEmbed();
   document.getElementById('win').classList.add('show');
   document.getElementById('counter').textContent = (rec.outcome==='solved')
-    ? "You've already solved today's rider — come back tomorrow, or switch to Practice."
-    : "You gave up on today's rider — come back tomorrow, or switch to Practice.";
+    ? "Je hebt de oplossing voor vandaag al gevonden - Kom morgen terug, of wissel naar de Oefenzone"
+    : "Je hebt opgegeven... - Kom morgen terug, of wissel naar de Oefenzone";
   applyGrid();
   renderBoards();
   closeDrop();
