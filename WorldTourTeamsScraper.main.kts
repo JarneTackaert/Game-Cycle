@@ -254,20 +254,24 @@ fun getRiderDetails(riderSlug: String): RiderDetails {
 // ────────────────────────────────────────────────────────────────
 
 /**
- * Fetch the top [topN] riders of one UCI individual ranking and return a
- * slug -> rank map. [rankingParam] selects the ranking:
- *   "uci-individual"     -> men's UCI World Ranking
- *   "uci-individual-we"  -> women's UCI World Ranking
+ * Fetch the top [topN] riders of one UCI World Ranking and return a
+ * slug -> rank map. [gender] selects the ranking:
+ *   "me" -> men's UCI World Ranking
+ *   "we" -> women's UCI World Ranking
+ *
+ * PCS serves both via `rankings.php?p=<gender>&s=world-ranking`. The women's
+ * ranking ONLY responds to this two-parameter form (a single combined `p=`
+ * value returns an empty table), so both genders use it for consistency.
  *
  * The page shows 100 riders per request, paginated via `offset` (0,100,200…).
  * No `date` is sent, so PCS returns the latest published ranking (recomputed
  * each Tuesday) — meaning this stays current whenever the scraper runs.
  */
-fun getUciRanking(rankingParam: String, topN: Int = 250): Map<String, Int> {
+fun getUciRanking(gender: String, topN: Int = 250): Map<String, Int> {
     val result = LinkedHashMap<String, Int>()
     var offset = 0
     while (offset < topN) {
-        val doc = fetch("rankings.php?p=$rankingParam&offset=$offset")
+        val doc = fetch("rankings.php?p=$gender&s=world-ranking&offset=$offset")
         val rows = doc.safe("table.basic tbody tr")
         if (rows.isEmpty()) break
         for (row in rows) {
@@ -287,11 +291,11 @@ fun getUciRanking(rankingParam: String, topN: Int = 250): Map<String, Int> {
  */
 fun getUciRankings(topN: Int = 250): Map<String, Int> {
     System.err.println("Fetching men's UCI ranking (top $topN) ...")
-    val men = getUciRanking("uci-individual", topN)
+    val men = getUciRanking("me", topN)
     System.err.println("  ${men.size} men ranked.")
 
     System.err.println("Fetching women's UCI ranking (top $topN) ...")
-    val women = getUciRanking("uci-individual-we", topN)
+    val women = getUciRanking("we", topN)
     System.err.println("  ${women.size} women ranked.")
 
     val merged = LinkedHashMap<String, Int>()
