@@ -248,7 +248,7 @@ function toRider(row) {
     team:        row["Team"],
     circuit:     row["Team tier"],             // WorldTour / ProTour
     specialty:   row["Specialty 1"] || row["Specialty 2"] || "",
-    gender:      row["Gender"],                // "Male" / "Female" (matches the tabs)
+    gender:      gender:      ({ M: "Male", F: "Female" })[row["Gender"]] || row["Gender"],  // CSV uses M/F
     // hint data:
     wins:        parseInt(row["Wins"], 10) || 0,
     topResults:  [row["Top result 1"], row["Top result 2"], row["Top result 3"]].filter(Boolean),
