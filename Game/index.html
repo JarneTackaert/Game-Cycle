@@ -403,6 +403,36 @@ function loadPersist(){
   }catch(e){ /* corrupt / unavailable storage — start fresh */ }
 }
 
+/* Compute the rider that the daily puzzle for the CURRENT tab (pool×rank) would
+   pick, without starting a round or touching any UI. Used to detect when two
+   tabs resolve to the same rider so a solve/give-up on one locks the other. */
+function dailyAnswerForCurrentTab(){
+  if(!POOL.length) return null;
+  return POOL[ seededIndex(todayKey()+'|'+pool+'|'+rankFilter, POOL.length) ];
+}
+
+/* Find today's resolved record that should lock the current tab. Matches either:
+   (a) the exact tag (this tab was itself played), or
+   (b) a DIFFERENT tab played today whose answer is the same rider — closing the
+       overlap where e.g. Men and All, or All-riders and Top-ranked, share a rider.
+   Returns the record (possibly retagged to the current tab) or null. */
+function findResolvedForCurrentTab(){
+  const today = todayKey();
+  const exact = dailyResolved[dailyTag()];
+  if(exact && exact.date===today) return exact;
+
+  const ans = dailyAnswerForCurrentTab();
+  if(!ans) return null;
+  for(const k in dailyResolved){
+    const rec = dailyResolved[k];
+    if(rec && rec.date===today && rec.rider && rec.rider.fullName===ans.fullName){
+      // Same rider as this tab's puzzle → carry the lock across to this tab.
+      return rec;
+    }
+  }
+  return null;
+}
+
 /* Drop any stored daily rounds that aren't for today. Keeps localStorage from
    accumulating old rounds and makes sure yesterday's solved round doesn't
    restore today. */
@@ -523,12 +553,13 @@ function setRankFilter(f){
 function newGame(){
   if(!POOL.length) return;
 
-  // In daily mode, if today's round for THIS pool (gender×rank) is already
-  // resolved, restore it (don't start a new round — that's how the give-up
-  // lock was being bypassed, and it's also how refresh-persistence works).
+  // In daily mode, if today's round for THIS tab is already resolved — either
+  // because this exact tab was played, or because another tab played today
+  // resolves to the same rider — restore the finished panel instead of starting
+  // a fresh round. This is what stops tab-switching from re-opening the answer.
   if(mode==='daily'){
-    const rec = dailyResolved[dailyTag()];
-    if(rec && rec.date===todayKey()){
+    const rec = findResolvedForCurrentTab();
+    if(rec){
       restoreResolvedDaily(rec);
       return;
     }
@@ -581,11 +612,11 @@ function restoreResolvedDaily(rec){
   document.getElementById('giveup').classList.add('hide');
 }
 
-/* Give-up button: only in daily mode, only while the round is live (not solved/given-up today) */
+/* Give-up button: only in daily mode, only while the round is live (not solved/
+   given-up today, and not locked via an overlapping tab) */
 function updateGiveUp(roundOver){
   const btn=document.getElementById('giveup');
-  const rec = dailyResolved[dailyTag()];
-  const dailyDone = (mode==='daily' && rec && rec.date===todayKey());
+  const dailyDone = (mode==='daily' && !!findResolvedForCurrentTab());
   if(mode==='daily' && !dailyDone && !roundOver){
     btn.classList.remove('hide'); btn.disabled=false;
   }else{
@@ -595,18 +626,20 @@ function updateGiveUp(roundOver){
 
 function renderStreak(){ document.getElementById('streakNum').textContent = streak; }
 
-/* Is today's daily round solved for the current pool? True both for a live solve
-   this session and for a solved round restored from storage after a refresh. */
+/* Is today's daily round solved for the current tab? True for a live solve this
+   session, a solved round restored from storage, or a solved overlapping tab
+   (same rider). */
 function dailySolvedToday(){
   if(lastSolvedDay===todayKey()) return true;
-  const rec = dailyResolved[dailyTag()];
-  return !!(rec && rec.date===todayKey() && rec.outcome==='solved');
+  const rec = findResolvedForCurrentTab();
+  return !!(rec && rec.outcome==='solved');
 }
 
-/* How many guesses your daily solve took (live count, restored record, or fallback). */
+/* How many guesses your daily solve took (restored/overlapping record, live
+   count, or fallback). */
 function myDailyGuesses(){
-  const rec = dailyResolved[dailyTag()];
-  if(rec && rec.date===todayKey() && rec.outcome==='solved') return rec.guesses;
+  const rec = findResolvedForCurrentTab();
+  if(rec && rec.outcome==='solved' && typeof rec.guesses==='number') return rec.guesses;
   return guesses.length || lastDailyGuesses;
 }
 
