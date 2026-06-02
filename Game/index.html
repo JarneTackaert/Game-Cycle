@@ -428,7 +428,6 @@ function newGame(){
   document.getElementById('win').classList.remove('show');
   document.getElementById('embed').innerHTML='';
   const inp=document.getElementById('guess'); inp.value=''; inp.disabled=false;
-  document.getElementById('counter').textContent = POOL.length+' riders in the pool';
   applyGrid();
   renderBoards();
   closeDrop();
