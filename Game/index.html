@@ -190,6 +190,11 @@
     <button id="t-All" onclick="setPool('All')">All</button>
   </div>
 
+  <div class="tabs" id="rankTabs">
+    <button id="r-all" class="on" onclick="setRankFilter('all')">All riders</button>
+    <button id="r-ranked" onclick="setRankFilter('ranked')">Top ranked only</button>
+  </div>
+
   <div class="searchbox">
     <input id="guess" type="text" placeholder="Type a rider's name…" autocomplete="off"/>
     <div class="drop" id="drop"></div>
@@ -236,10 +241,10 @@ function ageBand(age) {
   return lo + "-" + (lo + 4);
 }
 
-  // CSV uses M/F; the game's tabs expect Male/Female.
+// CSV uses M/W; the game's tabs expect Male/Female.
 function normGender(g) {
   if (g === "M") return "Male";
-  if (g === "W") return "Female";
+  if (g === "W" || g === "F") return "Female";
   return g;
 }
 
@@ -255,7 +260,8 @@ function toRider(row) {
     team:        row["Team"],
     circuit:     row["Team tier"],             // WorldTour / ProTour
     specialty:   row["Specialty 1"] || row["Specialty 2"] || "",
-    gender:      normGender(row["Gender"]),
+    gender:      normGender(row["Gender"]),    // M/W -> Male/Female
+    uciRank:     parseInt(row["UCI rank"], 10) || null,  // top-250 ranked riders; null = unranked
     // hint data:
     wins:        parseInt(row["Wins"], 10) || 0,
     topResults:  [row["Top result 1"], row["Top result 2"], row["Top result 3"]].filter(Boolean),
@@ -283,21 +289,24 @@ async function loadRiders() {
 
 let ALL=[], POOL=[], pool='Male', answer, guesses=[], activeIdx=-1, filtered=[];
 let mode='daily';            // 'daily' or 'practice'
+let rankFilter='all';        // 'all' or 'ranked' (top-250-per-gender; 500 for All)
 let streak=0;                // consecutive days solved (session mock; real value comes from backend/login)
 let lastSolvedDay=null;      // date-string of last daily solve, to gate streak + one-solve-per-day
 let gaveUpDay=null;          // date-string of a daily give-up, to lock the round for that day
 let totalFound=0;            // riders found all-time (session mock)
-/* Remembers resolved daily rounds for this session, keyed by pool, so switching
+/* Remembers resolved daily rounds for this session, keyed by gender×rank, so switching
    modes/tabs and returning can't reset a give-up or re-open a solved round.
-   Shape: dailyResolved[pool] = {date, outcome:'solved'|'gaveup', rider, guesses} */
+   Shape: dailyResolved[dailyTag()] = {date, outcome:'solved'|'gaveup', rider, guesses} */
 let dailyResolved={};
 
-/* ---- Daily puzzle: same rider for everyone on a given date, per gender pool ----
+/* ---- Daily puzzle: same rider for everyone on a given date, per pool ----
    Deterministic seed from the date so the "daily standings" are comparable.
    In the real app/site the date + pool seed lives server-side; this mirrors it. */
 function todayKey(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function dayKeyFrom(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function yesterdayKey(){ const d=new Date(); d.setDate(d.getDate()-1); return dayKeyFrom(d); }
+// Each gender×rank combination is its own daily puzzle.
+function dailyTag(){ return pool+'|'+rankFilter; }
 function seededIndex(seedStr, len){
   let h=2166136261;
   for(let i=0;i<seedStr.length;i++){ h^=seedStr.charCodeAt(i); h=Math.imul(h,16777619); }
@@ -367,21 +376,40 @@ function renderHead(){
   document.getElementById('head').innerHTML=cols().map(c=>'<div class="cell">'+c.label+'</div>').join('');
 }
 
+/* Build POOL from the current gender selection (pool) and rank filter.
+   - gender: Male/Female narrows to that gender; All keeps everyone.
+   - rankFilter 'ranked' keeps only riders with a UCI rank (top 250 per gender,
+     so All + ranked = the 500 ranked riders). */
+function buildPool(){
+  let p = (pool==='All') ? ALL : ALL.filter(r=>r.gender===pool);
+  if(rankFilter==='ranked') p = p.filter(r=>r.uciRank!=null);
+  POOL = p;
+}
+
 function setPool(g){
   pool=g;
   ['Male','Female','All'].forEach(x=>document.getElementById('t-'+x).classList.toggle('on',x===g));
-  POOL = g==='All' ? ALL : ALL.filter(r=>r.gender===g);
+  buildPool();
   renderHead();
+  newGame();
+}
+
+function setRankFilter(f){
+  rankFilter=f;
+  document.getElementById('r-all').classList.toggle('on', f==='all');
+  document.getElementById('r-ranked').classList.toggle('on', f==='ranked');
+  buildPool();
   newGame();
 }
 
 function newGame(){
   if(!POOL.length) return;
 
-  // In daily mode, if today's round for THIS pool is already resolved, restore it
-  // (don't start a new round — that's how the give-up lock was being bypassed).
+  // In daily mode, if today's round for THIS pool (gender×rank) is already
+  // resolved, restore it (don't start a new round — that's how the give-up
+  // lock was being bypassed).
   if(mode==='daily'){
-    const rec = dailyResolved[pool];
+    const rec = dailyResolved[dailyTag()];
     if(rec && rec.date===todayKey()){
       restoreResolvedDaily(rec);
       return;
@@ -389,7 +417,7 @@ function newGame(){
   }
 
   if(mode==='daily'){
-    answer = POOL[ seededIndex(todayKey()+'|'+pool, POOL.length) ];
+    answer = POOL[ seededIndex(todayKey()+'|'+pool+'|'+rankFilter, POOL.length) ];
   }else{
     answer = POOL[Math.floor(Math.random()*POOL.length)];
   }
@@ -438,7 +466,7 @@ function restoreResolvedDaily(rec){
 /* Give-up button: only in daily mode, only while the round is live (not solved/given-up today) */
 function updateGiveUp(roundOver){
   const btn=document.getElementById('giveup');
-  const rec = dailyResolved[pool];
+  const rec = dailyResolved[dailyTag()];
   const dailyDone = (mode==='daily' && rec && rec.date===todayKey());
   if(mode==='daily' && !dailyDone && !roundOver){
     btn.classList.remove('hide'); btn.disabled=false;
@@ -561,7 +589,7 @@ function recordWin(){
     streak = (lastSolvedDay===yesterdayKey()) ? streak+1 : 1;
     lastSolvedDay=todayKey();
     lastDailyGuesses=guesses.length;
-    dailyResolved[pool] = {date:todayKey(), outcome:'solved', rider:answer, guesses:guesses.length};
+    dailyResolved[dailyTag()] = {date:todayKey(), outcome:'solved', rider:answer, guesses:guesses.length};
   }
   renderStreak();
   renderBoards();
@@ -575,7 +603,7 @@ function giveUp(){
   if(mode==='daily'){
     gaveUpDay=todayKey();
     streak=0;            // giving up always breaks the streak
-    dailyResolved[pool] = {date:todayKey(), outcome:'gaveup', rider:answer, guesses:guesses.length};
+    dailyResolved[dailyTag()] = {date:todayKey(), outcome:'gaveup', rider:answer, guesses:guesses.length};
     renderStreak();
   }
   document.getElementById('winTitle').textContent='The answer was…';
