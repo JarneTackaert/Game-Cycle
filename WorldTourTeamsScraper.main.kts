@@ -26,6 +26,9 @@ import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
 
 val PCS_URL = "https://www.procyclingstats.com/"
 
@@ -254,24 +257,40 @@ fun getRiderDetails(riderSlug: String): RiderDetails {
 // ────────────────────────────────────────────────────────────────
 
 /**
+ * The UCI World Ranking is republished every Tuesday. PCS lets you pin a
+ * ranking to a date, and a non-Tuesday date returns an empty/oddly-dated
+ * table — so we always query the most recent Tuesday (today if today is a
+ * Tuesday). This keeps the scrape aligned with whatever UCI ranking is
+ * current whenever the workflow runs.
+ */
+fun mostRecentTuesday(): LocalDate {
+    val today = LocalDate.now()
+    return if (today.dayOfWeek == DayOfWeek.TUESDAY) today
+           else today.with(TemporalAdjusters.previous(DayOfWeek.TUESDAY))
+}
+
+/**
  * Fetch the top [topN] riders of one UCI World Ranking and return a
- * slug -> rank map. [gender] selects the ranking:
- *   "me" -> men's UCI World Ranking
- *   "we" -> women's UCI World Ranking
+ * slug -> rank map. [gender] selects the ranking.
  *
- * PCS serves both via `rankings.php?p=<gender>&s=world-ranking`. The women's
- * ranking ONLY responds to this two-parameter form (a single combined `p=`
- * value returns an empty table), so both genders use it for consistency.
+ * IMPORTANT: men and women use DIFFERENT PCS parameter schemes, and both
+ * must be the UCI ranking (NOT the PCS Ranking, which is a separate ladder
+ * with different positions):
+ *   men   -> rankings.php?p=uci-individual&s=
+ *   women -> rankings.php?p=we&s=world-ranking
  *
+ * A `date` pinned to the most recent Tuesday selects the current UCI ranking.
  * The page shows 100 riders per request, paginated via `offset` (0,100,200…).
- * No `date` is sent, so PCS returns the latest published ranking (recomputed
- * each Tuesday) — meaning this stays current whenever the scraper runs.
  */
 fun getUciRanking(gender: String, topN: Int = 250): Map<String, Int> {
+    require(gender == "men" || gender == "women") { "gender must be 'men' or 'women'" }
+    val date = mostRecentTuesday()
+    // Men: p=uci-individual with an empty s=. Women: p=we&s=world-ranking.
+    val params = if (gender == "men") "p=uci-individual&s=" else "p=we&s=world-ranking"
     val result = LinkedHashMap<String, Int>()
     var offset = 0
     while (offset < topN) {
-        val doc = fetch("rankings.php?p=$gender&s=world-ranking&offset=$offset")
+        val doc = fetch("rankings.php?$params&date=$date&page=smallerorequal&offset=$offset&filter=Filter")
         val rows = doc.safe("table.basic tbody tr")
         if (rows.isEmpty()) break
         for (row in rows) {
@@ -290,12 +309,13 @@ fun getUciRanking(gender: String, topN: Int = 250): Map<String, Int> {
  * top [topN]. Slugs are unique across genders, so one merged map is safe.
  */
 fun getUciRankings(topN: Int = 250): Map<String, Int> {
+    System.err.println("UCI ranking date (most recent Tuesday): ${mostRecentTuesday()}")
     System.err.println("Fetching men's UCI ranking (top $topN) ...")
-    val men = getUciRanking("me", topN)
+    val men = getUciRanking("men", topN)
     System.err.println("  ${men.size} men ranked.")
 
     System.err.println("Fetching women's UCI ranking (top $topN) ...")
-    val women = getUciRanking("we", topN)
+    val women = getUciRanking("women", topN)
     System.err.println("  ${women.size} women ranked.")
 
     val merged = LinkedHashMap<String, Int>()
