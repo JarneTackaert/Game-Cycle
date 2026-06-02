@@ -441,14 +441,15 @@ function restoreResolvedDaily(rec){
   document.getElementById('rows').innerHTML='';
   document.getElementById('hints').innerHTML='';
   document.getElementById('hintProgress').innerHTML='';
+  document.getElementById('win').classList.remove('show');
   document.getElementById('embed').innerHTML='';
   const inp=document.getElementById('guess'); inp.value=''; inp.disabled=true;
   if(rec.outcome==='solved'){
-    document.getElementById('winTitle').textContent='Solved!';
+    document.getElementById('winTitle').textContent='Proficiat!';
     document.getElementById('winp').textContent=rec.rider.fullName+' ('+rec.rider.team+') — solved in '+rec.guesses+' guess'+(rec.guesses>1?'es':'')+'.';
   }else{
-    document.getElementById('winTitle').textContent='The answer was…';
-    document.getElementById('winp').textContent=rec.rider.fullName+' ('+rec.rider.team+'). No worries — better luck tomorrow.';
+    document.getElementById('winTitle').textContent='Het antwoord was...';
+    document.getElementById('winp').textContent=rec.rider.fullName+' ('+rec.rider.team+'). Geen zorgen! Morgen is er een nieuwe kans op eeuwige roem!';
   }
   showEmbed();
   document.getElementById('win').classList.add('show');
