@@ -424,6 +424,7 @@ function newGame(){
   document.getElementById('rows').innerHTML='';
   document.getElementById('hints').innerHTML='';
   document.getElementById('hintProgress').innerHTML='';
+  document.getElementById('counter').textContent='';
   document.getElementById('win').classList.remove('show');
   document.getElementById('embed').innerHTML='';
   const inp=document.getElementById('guess'); inp.value=''; inp.disabled=false;
@@ -605,8 +606,8 @@ function giveUp(){
     dailyResolved[dailyTag()] = {date:todayKey(), outcome:'gaveup', rider:answer, guesses:guesses.length};
     renderStreak();
   }
-  document.getElementById('winTitle').textContent='The answer was…';
-  document.getElementById('winp').textContent=answer.fullName+' ('+answer.team+'). No worries — better luck tomorrow.';
+  document.getElementById('winTitle').textContent='Het antwoord was: ...';
+  document.getElementById('winp').textContent=answer.fullName+' ('+answer.team+'). Geen zorgen, morgen is er een nieuwe kans op eeuwige roem!';
   showEmbed();
   document.getElementById('win').classList.add('show');
   window.scrollTo({top:0, behavior:'smooth'});
