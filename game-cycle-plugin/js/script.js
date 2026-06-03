@@ -83,16 +83,6 @@ function todayKey() {
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 
-function dayKeyFrom(d) {
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-}
-
-function yesterdayKey() {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return dayKeyFrom(d);
-}
-
 // Each gender×rank combination is its own daily puzzle.
 function dailyTag() {
     return pool + '|' + rankFilter;
@@ -169,8 +159,8 @@ function setMode(m) {
     mode = m;
     document.getElementById('m-daily').classList.toggle('on', m === 'daily');
     document.getElementById('m-practice').classList.toggle('on', m === 'practice');
-    document.getElementById('m-daily').setAttribute('aria-selected', m==='daily');
-    document.getElementById('m-practice').setAttribute('aria-selected', m==='practice');
+    document.getElementById('m-daily').setAttribute('aria-selected', m === 'daily');
+    document.getElementById('m-practice').setAttribute('aria-selected', m === 'practice');
     // Clear shared UI residue from the previous mode before starting/restoring.
     // (daily and practice share the same win panel, answer var, and input.)
     document.getElementById('win').classList.remove('show');
@@ -275,7 +265,7 @@ function newGame() {
     const inp = document.getElementById('guess');
     inp.value = '';
     inp.disabled = false;
-    
+
     // Zorg dat klassement verborgen is aan het begin van een nieuw spel
     const boards = document.querySelector('.win .boards');
     if (boards) boards.style.display = 'none';
@@ -286,10 +276,7 @@ function newGame() {
     updateGiveUp(false);
 }
 
-/* Rebuild the finished panel for an already-resolved daily round (solved or gave up).
-   Input stays locked and the give-up button stays hidden, regardless of mode-switching. */
-function restoreResolvedDaily(rec) {
-    answer = rec.rider;
+function numberOfGuesses() {
     guesses = [];
     document.getElementById('rows').innerHTML = '';
     document.getElementById('hints').innerHTML = '';
@@ -298,6 +285,13 @@ function restoreResolvedDaily(rec) {
     const inp = document.getElementById('guess');
     inp.value = '';
     inp.disabled = true;
+}
+
+/* Rebuild the finished panel for an already-resolved daily round (solved or gave up).
+   Input stays locked and the give-up button stays hidden, regardless of mode-switching. */
+function restoreResolvedDaily(rec) {
+    answer = rec.rider;
+    numberOfGuesses();
     if (rec.outcome === 'solved') {
         document.getElementById('winTitle').textContent = 'Opgelost!';
         document.getElementById('winp').textContent = rec.rider.fullName + ' (' + rec.rider.team + ') — je had ' + rec.guesses + ' gok' + (rec.guesses > 1 ? 'ken' : '') + 'nodig.';
@@ -321,18 +315,11 @@ function restoreResolvedDaily(rec) {
 }
 
 function showPlayedTodayBlock() {
-    guesses = [];
-    document.getElementById('rows').innerHTML = '';
-    document.getElementById('hints').innerHTML = '';
-    document.getElementById('hintProgress').innerHTML = '';
-    document.getElementById('embed').innerHTML = '';
-    const inp = document.getElementById('guess');
-    inp.value = '';
-    inp.disabled = true;
-    
+    numberOfGuesses();
+
     document.getElementById('winTitle').textContent = 'Vandaag al gespeeld';
     document.getElementById('winp').textContent = 'Je hebt vandaag al meegespeeld met de "Renner van de dag". Kom morgen terug voor een nieuwe uitdaging of ga nu verder in de oefenzone!';
-    
+
     document.getElementById('win').classList.add('show');
     const counter = document.getElementById('counter');
     if (counter) {
@@ -372,8 +359,7 @@ function renderBoards() {
     document.getElementById('againBtn').style.display = (mode === 'practice') ? '' : 'none';
 
     // GENERAL
-    const gen = REAL_GENERAL;
-    document.getElementById('genBoard').innerHTML = gen.map((p, i) =>
+    document.getElementById('genBoard').innerHTML = REAL_GENERAL.map((p, i) =>
         '<div class="sbrow gen' + (p.me ? ' me' : '') + '">' +
         '<span class="rank' + (i < 3 ? ' top' : '') + '">' + (i + 1) + '</span>' +
         '<span class="sbname">' + p.name + '</span>' +
@@ -382,8 +368,7 @@ function renderBoards() {
         '</div>').join('');
 
     // DAILY
-    const day = REAL_DAILY;
-    document.getElementById('dayBoard').innerHTML = day.map((p, i) =>
+    document.getElementById('dayBoard').innerHTML = REAL_DAILY.map((p, i) =>
         '<div class="sbrow day' + (p.me ? ' me' : '') + '">' +
         '<span class="rank' + (i < 3 ? ' top' : '') + '">' + (i + 1) + '</span>' +
         '<span class="sbname">' + p.name + '</span>' +
@@ -491,7 +476,7 @@ function recordWin() {
         fd.append('action', 'gc_save_score');
         fd.append('score', guesses.length);
         fd.append('tijd', 0); // Tijd tracking not implemented in this version of game-cycle
-        fetch(cycleGameData.ajax_url, { method: 'POST', body: fd })
+        fetch(cycleGameData.ajax_url, {method: 'POST', body: fd})
             .then(() => {
                 fetchRankings().then(renderBoards);
                 fetchUserStats();
@@ -518,7 +503,7 @@ function giveUp() {
         fd.append('action', 'gc_save_score');
         fd.append('score', -1); // Use -1 to indicate give up / failed
         fd.append('tijd', 0);
-        fetch(cycleGameData.ajax_url, { method: 'POST', body: fd })
+        fetch(cycleGameData.ajax_url, {method: 'POST', body: fd})
             .then(() => {
                 fetchRankings().then(renderBoards);
                 fetchUserStats();
@@ -664,21 +649,21 @@ document.addEventListener('click', e => {
 
 
 function renderHints() {
-    var el = document.getElementById('hints');
+    const el = document.getElementById('hints');
     el.innerHTML = '';
     if (!answer) return;
-    var wrong = guesses.filter(function (g) {
+    const wrong = guesses.filter(function (g) {
         return g.fullName !== answer.fullName
     }).length;
     if (wrong >= 3) {
-        var w = answer.wins || 0;
-        var txt = w > 0 ? '\u{1F3C6} Deze renner heeft <b>' + w + '</b> ' + (w === 1 ? 'overwinning' : 'overwinningen') + '.'
+        const w = answer.wins || 0;
+        const txt = w > 0 ? '\u{1F3C6} Deze renner heeft <b>' + w + '</b> ' + (w === 1 ? 'overwinning' : 'overwinningen') + '.'
             : '\u{1F3C6} Deze renner heeft <b>geen geregistreerde overwinningen</b>.';
         el.innerHTML += '<div class="hint hint-victories">' + txt + '</div>';
     }
     if (wrong >= 5) {
-        var tops = answer.topResults || [];
-        var txt2 = '\u{1F947} <b>Top resultaten:</b> ';
+        const tops = answer.topResults || [];
+        let txt2 = '\u{1F947} <b>Top resultaten:</b> ';
         if (tops.length > 0) txt2 += '<ul>' + tops.map(function (t) {
             return '<li>' + t + '</li>'
         }).join('') + '</ul>';
@@ -686,8 +671,8 @@ function renderHints() {
         el.innerHTML += '<div class="hint hint-results">' + txt2 + '</div>';
     }
     if (wrong >= 8) {
-        var teams = answer.previousTeams || [];
-        var txt3 = '\u{1F504} <b>Voorgaande teams:</b> ';
+        const teams = answer.previousTeams || [];
+        let txt3 = '\u{1F504} <b>Voorgaande teams:</b> ';
         if (teams.length > 0) {
             txt3 += '<span class="team-chain">' + teams.map(function (t, i) {
                 return '<span class="team-chip">' + t + '</span>' + (i < teams.length - 1 ? ' <span class="team-arrow">\u2192</span> ' : '')
@@ -699,14 +684,14 @@ function renderHints() {
 }
 
 function renderHintProgress(wrong) {
-    var el = document.getElementById('hintProgress');
+    const el = document.getElementById('hintProgress');
     if (!answer) {
         el.innerHTML = '';
         return;
     }
-    var thresholds = [3, 5, 8];
-    var next = null;
-    for (var i = 0; i < thresholds.length; i++) {
+    const thresholds = [3, 5, 8];
+    let next = null;
+    for (let i = 0; i < thresholds.length; i++) {
         if (wrong < thresholds[i]) {
             next = thresholds[i];
             break;
@@ -716,9 +701,9 @@ function renderHintProgress(wrong) {
         el.innerHTML = '<div class="hp-done">\u2713 Alle hints ontgrendeld</div>';
         return;
     }
-    var prev = thresholds[thresholds.indexOf(next) - 1] || 0;
-    var pct = Math.round(((wrong - prev) / (next - prev)) * 100);
-    var remaining = next - wrong;
+    const prev = thresholds[thresholds.indexOf(next) - 1] || 0;
+    const pct = Math.round(((wrong - prev) / (next - prev)) * 100);
+    const remaining = next - wrong;
     el.innerHTML = '<div class="hp-label">Volgende hint in ' + remaining + ' verkeerde gok' + (remaining > 1 ? 'jes' : '') + '</div>'
         + '<div class="hp-bar"><div class="hp-fill" style="width:' + pct + '%"></div></div>';
 }
