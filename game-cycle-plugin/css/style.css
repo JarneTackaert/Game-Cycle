@@ -992,4 +992,54 @@ button.again:hover, .giveup:hover {
         margin: 0 !important;
         padding: 0 !important;
     }
+
+    /* Mobiele optimalisaties voor de grid */
+    .board, #rows {
+        gap: 4px;
+    }
+
+    .row {
+        gap: 4px;
+    }
+
+    .cell {
+        min-height: 48px;
+        font-size: 10px;
+        padding: 4px 2px;
+        border-radius: 6px;
+        word-break: break-word; /* Zorg dat lange woorden afbreken */
+        line-height: 1.2;
+    }
+
+    .head .cell {
+        font-size: 9px;
+        letter-spacing: 0;
+        padding: 2px;
+        background: #eee;
+        color: #000;
+        border-bottom: 2px solid #ccc;
+    }
+
+    .sbrow.gen {
+        grid-template-columns: 24px 1fr auto auto;
+        gap: 6px;
+        font-size: 11px;
+        padding: 8px 10px;
+    }
+
+    .sbrow.day {
+        grid-template-columns: 24px 1fr auto;
+        gap: 6px;
+        font-size: 11px;
+        padding: 8px 10px;
+    }
+
+    .scoreboard h3 {
+        font-size: 12px;
+        padding: 10px 12px;
+    }
+
+    .scoreboard h3 .sub2 {
+        font-size: 9px;
+    }
 }

@@ -262,7 +262,17 @@ function gc_get_user_stats() {
     }
     
     $streak = gc_calculate_streak($user_id);
-    wp_send_json_success(array('streak' => $streak));
+    
+    // Check of er vandaag al een score is
+    global $wpdb;
+    $table = $wpdb->prefix . 'gc_scores';
+    $today = current_time('Y-m-d');
+    $played_today = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table WHERE user_id = %d AND dag = %s", $user_id, $today));
+    
+    wp_send_json_success(array(
+        'streak' => $streak,
+        'played_today' => ($played_today > 0)
+    ));
 }
 
 add_action('wp_ajax_gc_save_score', 'gc_save_score');
@@ -314,7 +324,7 @@ function gc_get_rankings() {
         SELECT u.display_name as name, CAST(s.score AS UNSIGNED) as g
         FROM {$wpdb->prefix}users u
         INNER JOIN $table s ON u.ID = s.user_id
-        WHERE s.dag = %s
+        WHERE s.dag = %s AND s.score > 0
         ORDER BY s.score ASC, s.tijd ASC
         LIMIT 10
     ", $today));

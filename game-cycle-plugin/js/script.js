@@ -68,7 +68,7 @@ let mode = 'daily';            // 'daily' or 'practice'
 let rankFilter = 'all';        // 'all' or 'ranked' (top-250-per-gender; 500 for All)
 let streak = 0;                // consecutive days solved (session mock; real value comes from backend/login)
 let lastSolvedDay = null;      // date-string of last daily solve, to gate streak + one-solve-per-day
-let gaveUpDay = null;          // date-string of a daily give-up, to lock the round for that day
+let lastGaveUpDay = null;        // date-string of last daily give-up
 let totalFound = 0;            // riders found all-time (session mock)
 /* Remembers resolved daily rounds for this session, keyed by gender×rank, so switching
    modes/tabs and returning can't reset a give-up or re-open a solved round.
@@ -142,6 +142,9 @@ async function fetchUserStats() {
         const data = await res.json();
         if (data.success) {
             streak = data.data.streak || 0;
+            if (data.data.played_today) {
+                lastSolvedDay = todayKey();
+            }
             renderStreak();
         }
     } catch (e) {
@@ -181,20 +184,28 @@ function setMode(m) {
 }
 
 function cols() {
+    const isMobile = window.innerWidth <= 600;
     const base = [
-        {key: 'fullName', label: 'Renner', w: '1fr'},
-        {key: 'ageBand', label: 'Leeftijd', w: '1fr'},
-        {key: 'nationality', label: 'Nationaliteit', w: '1fr'},
-        {key: 'team', label: 'Team', w: '1fr'},
-        {key: 'circuit', label: 'Circuit', w: '1fr'},
-        {key: 'specialty', label: 'Specialiteit', w: '1fr'},
+        {key: 'fullName', label: isMobile ? 'Renner' : 'Renner', w: '1.2fr'},
+        {key: 'ageBand', label: isMobile ? 'Leeft' : 'Leeftijd', w: '0.8fr'},
+        {key: 'nationality', label: isMobile ? 'Nat' : 'Nationaliteit', w: '0.8fr'},
+        {key: 'team', label: isMobile ? 'Team' : 'Team', w: '1fr'},
+        {key: 'circuit', label: isMobile ? 'Circ' : 'Circuit', w: '0.8fr'},
+        {key: 'specialty', label: isMobile ? 'Spec' : 'Specialiteit', w: '1fr'},
     ];
-    if (pool === 'All') base.push({key: 'gender', label: 'Geslacht', w: '1fr'});
+    if (pool === 'All') base.push({key: 'gender', label: isMobile ? 'Gesl' : 'Geslacht', w: '0.7fr'});
     return base;
 }
 
 function applyGrid() {
-    const tmpl = cols().map(c => c.w === '1fr' ? 'minmax(0,1fr)' : c.w).join(' ');
+    const isMobile = window.innerWidth <= 600;
+    const tmpl = cols().map(c => {
+        if (isMobile) {
+            // Op mobiel gebruiken we de fractionele breedtes direct voor een compacte weergave
+            return c.w.includes('fr') ? c.w : 'minmax(0,' + c.w + ')';
+        }
+        return c.w === '1fr' ? 'minmax(0,1fr)' : c.w;
+    }).join(' ');
     document.querySelectorAll('.row').forEach(r => r.style.gridTemplateColumns = tmpl);
 }
 
@@ -238,6 +249,13 @@ function newGame() {
         const rec = dailyResolved[dailyTag()];
         if (rec && rec.date === todayKey()) {
             restoreResolvedDaily(rec);
+            return;
+        }
+
+        // Global check: if the player already played ANY daily puzzle today,
+        // show the block message.
+        if (lastSolvedDay === todayKey() || lastGaveUpDay === todayKey()) {
+            showPlayedTodayBlock();
             return;
         }
     }
@@ -284,8 +302,29 @@ function restoreResolvedDaily(rec) {
     showEmbed();
     document.getElementById('win').classList.add('show');
     document.getElementById('counter').textContent = (rec.outcome === 'solved')
-        ? "Je hebt de oplossing van vandaag al gevonden. Kom morgen terug of wissel naar oefenmodus."
-        : "Je hebt opgegeven vandaag. Kom morgen terug of wissel naar oefenmodus om verder te spelen.";
+        ? "Je hebt de oplossing van vandaag al gevonden. Kom morgen terug of wissel naar de oefenzone."
+        : "Je hebt vandaag al meegespeeld. Kom morgen terug of wissel naar de oefenzone om verder te spelen.";
+    applyGrid();
+    renderBoards();
+    closeDrop();
+    document.getElementById('giveup').classList.add('hide');
+}
+
+function showPlayedTodayBlock() {
+    guesses = [];
+    document.getElementById('rows').innerHTML = '';
+    document.getElementById('hints').innerHTML = '';
+    document.getElementById('hintProgress').innerHTML = '';
+    document.getElementById('embed').innerHTML = '';
+    const inp = document.getElementById('guess');
+    inp.value = '';
+    inp.disabled = true;
+    
+    document.getElementById('winTitle').textContent = 'Vandaag al gespeeld';
+    document.getElementById('winp').textContent = 'Je hebt vandaag al meegespeeld met de "Renner van de dag". Kom morgen terug voor een nieuwe uitdaging of ga nu verder in de oefenzone!';
+    
+    document.getElementById('win').classList.add('show');
+    //document.getElementById('counter').textContent = "Je hebt vandaag al meegespeeld. Kom morgen terug of wissel naar de oefenzone.";
     applyGrid();
     renderBoards();
     closeDrop();
@@ -453,10 +492,21 @@ function giveUp() {
     inp.disabled = true;
     document.getElementById('giveup').classList.add('hide');
     if (mode === 'daily') {
-        gaveUpDay = todayKey();
+        lastGaveUpDay = todayKey();
         streak = 0;            // giving up always breaks the streak
         dailyResolved[dailyTag()] = {date: todayKey(), outcome: 'gaveup', rider: answer, guesses: guesses.length};
         renderStreak();
+
+        // Save a give-up (score 0 or special value) to server to lock the day
+        const fd = new FormData();
+        fd.append('action', 'gc_save_score');
+        fd.append('score', -1); // Use -1 to indicate give up / failed
+        fd.append('tijd', 0);
+        fetch(cycleGameData.ajax_url, { method: 'POST', body: fd })
+            .then(() => {
+                fetchRankings().then(renderBoards);
+                fetchUserStats();
+            });
     }
     document.getElementById('winTitle').textContent = 'The answer was…';
     document.getElementById('winp').textContent = answer.fullName + ' (' + answer.team + '). No worries — better luck tomorrow.';
