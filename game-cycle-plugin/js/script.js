@@ -152,16 +152,17 @@ async function fetchUserStats() {
     }
 }
 
-function load() {
+async function load() {
     ALL = RIDERS;
     const dayLabel = document.getElementById('dayLabel');
     if (dayLabel) {
         dayLabel.textContent = todayKey();
     }
     renderStreak();
+    await fetchUserStats();
+    await fetchRankings();
+    renderBoards();
     setPool('Male');
-    fetchRankings().then(renderBoards);
-    fetchUserStats();
 }
 
 function setMode(m) {
@@ -274,6 +275,11 @@ function newGame() {
     const inp = document.getElementById('guess');
     inp.value = '';
     inp.disabled = false;
+    
+    // Zorg dat klassement verborgen is aan het begin van een nieuw spel
+    const boards = document.querySelector('.win .boards');
+    if (boards) boards.style.display = 'none';
+
     applyGrid();
     renderBoards();
     closeDrop();
@@ -301,13 +307,17 @@ function restoreResolvedDaily(rec) {
     }
     showEmbed();
     document.getElementById('win').classList.add('show');
-    document.getElementById('counter').textContent = (rec.outcome === 'solved')
-        ? "Je hebt de oplossing van vandaag al gevonden. Kom morgen terug of wissel naar de oefenzone."
-        : "Je hebt vandaag al meegespeeld. Kom morgen terug of wissel naar de oefenzone om verder te spelen.";
+    const counter = document.getElementById('counter');
+    if (counter) {
+        counter.textContent = (rec.outcome === 'solved')
+            ? "Je hebt de oplossing van vandaag al gevonden. Kom morgen terug of wissel naar de oefenzone."
+            : "Je hebt vandaag al meegespeeld. Kom morgen terug of wissel naar de oefenzone om verder te spelen.";
+    }
     applyGrid();
     renderBoards();
     closeDrop();
     document.getElementById('giveup').classList.add('hide');
+    document.querySelector('.win .boards').style.display = 'flex';
 }
 
 function showPlayedTodayBlock() {
@@ -324,11 +334,17 @@ function showPlayedTodayBlock() {
     document.getElementById('winp').textContent = 'Je hebt vandaag al meegespeeld met de "Renner van de dag". Kom morgen terug voor een nieuwe uitdaging of ga nu verder in de oefenzone!';
     
     document.getElementById('win').classList.add('show');
-    //document.getElementById('counter').textContent = "Je hebt vandaag al meegespeeld. Kom morgen terug of wissel naar de oefenzone.";
+    const counter = document.getElementById('counter');
+    if (counter) {
+        counter.textContent = "Je hebt vandaag al meegespeeld. Kom morgen terug of wissel naar de oefenzone.";
+    }
     applyGrid();
     renderBoards();
     closeDrop();
     document.getElementById('giveup').classList.add('hide');
+
+    // Zorg dat het klassement paneel zichtbaar is
+    document.querySelector('.win .boards').style.display = 'flex';
 }
 
 /* Give-up button: only in daily mode, only while the round is live (not solved/given-up today) */
