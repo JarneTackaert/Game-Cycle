@@ -268,6 +268,47 @@ h1 {
     color: var(--muted)
 }
 
+/* Scoreboard Page Styles */
+.gc-scoreboard-page {
+    max-width: 95%;
+    width: 900px;
+    margin: 20px auto;
+    font-family: 'Manrope', sans-serif;
+    background: #fff;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    border: 2px solid #ffcc00;
+    box-sizing: border-box;
+}
+.gc-scoreboard-page h2, .gc-scoreboard-page h3 {
+    text-align: center;
+    color: #000;
+    margin-bottom: 25px;
+    font-weight: 800;
+}
+.gc-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.gc-table th, .gc-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+}
+.gc-table th {
+    background-color: #f9f9f9;
+    font-weight: bold;
+}
+.gc-nav-link {
+    text-decoration: none;
+    color: #d6232a;
+    font-weight: bold;
+}
+.gc-nav-link:hover {
+    text-decoration: underline;
+}
+
 .legend span {
     display: inline-flex;
     align-items: center;
@@ -589,6 +630,7 @@ button.again:hover, .giveup:hover {
     border-bottom: 1px solid #ddd;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
     color: #000;
 }
@@ -967,6 +1009,30 @@ button.again:hover, .giveup:hover {
     display: none !important;
 }
 
+/* Scoreboard links container */
+.g-scoreboard-links {
+    margin-top: 20px;
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.g-back-link-container {
+    text-align: center;
+    margin-top: 30px;
+}
+
+.g-back-link {
+    background: #000;
+    color: #ffcc00;
+    padding: 12px 25px;
+    text-decoration: none;
+    font-weight: bold;
+    border-radius: 5px;
+    display: inline-block;
+    transition: 0.3s;
+}
 @media (max-width: 600px) {
     #gc-user-bar {
         margin: 0 0 10px 0 !important;
@@ -994,6 +1060,15 @@ button.again:hover, .giveup:hover {
     }
 
     /* Mobiele optimalisaties voor de grid */
+    .boards {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .scoreboard {
+        width: 100%;
+    }
+
     .board, #rows {
         gap: 4px;
     }
@@ -1037,9 +1112,25 @@ button.again:hover, .giveup:hover {
     .scoreboard h3 {
         font-size: 12px;
         padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .scoreboard h3 .sub2 {
         font-size: 9px;
+    }
+
+    .gc-scoreboard-page {
+        width: 100% !important;      /* Volledige breedte op mobiel */
+        max-width: 100% !important;
+        margin: 0 auto !important;
+        padding: 15px 10px !important;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
+    .gc-scoreboard-page h2, .gc-scoreboard-page h3 {
+        font-size: 20px;
     }
 }

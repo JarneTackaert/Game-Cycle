@@ -263,11 +263,12 @@ function gc_get_user_stats() {
     
     $streak = gc_calculate_streak($user_id);
     
-    // Check of er vandaag al een score is
+    // Check of er vandaag al een score is voor deze categorie
     global $wpdb;
     $table = $wpdb->prefix . 'gc_scores';
     $today = current_time('Y-m-d');
-    $played_today = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table WHERE user_id = %d AND dag = %s", $user_id, $today));
+    $category = sanitize_text_field($_POST['category']);
+    $played_today = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table WHERE user_id = %d AND dag = %s AND categorie = %s", $user_id, $today, $category));
     
     wp_send_json_success(array(
         'streak' => $streak,
@@ -283,25 +284,36 @@ function gc_save_score() {
 
     $score = intval($_POST['score']);
     $tijd = intval($_POST['tijd']);
+    $category = sanitize_text_field($_POST['category']);
     $dag = current_time('Y-m-d');
 
     $table = $wpdb->prefix . 'gc_scores';
     
-    // Check of tabel bestaat, zo niet maak aan
+    // Check of tabel bestaat, zo niet maak aan (met categorie ondersteuning)
     $wpdb->query("CREATE TABLE IF NOT EXISTS `$table` (
         `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
         `user_id` BIGINT(20) NOT NULL,
         `dag` DATE NOT NULL,
+        `categorie` VARCHAR(50) DEFAULT 'Male|all',
         `score` INT(11) DEFAULT 0,
         `tijd` INT(11) DEFAULT 0,
         `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (`id`),
-        UNIQUE KEY `user_dag` (`user_id`, `dag`)
+        UNIQUE KEY `user_dag_cat` (`user_id`, `dag`, `categorie`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+    // Controleer of de kolom 'categorie' bestaat, zo niet voeg toe (voor bestaande tabellen)
+    $column_exists = $wpdb->get_results("SHOW COLUMNS FROM `$table` LIKE 'categorie'");
+    if (empty($column_exists)) {
+        $wpdb->query("ALTER TABLE `$table` ADD `categorie` VARCHAR(50) DEFAULT 'Male|all' AFTER `dag` ");
+        $wpdb->query("ALTER TABLE `$table` DROP INDEX `user_dag` ");
+        $wpdb->query("ALTER TABLE `$table` ADD UNIQUE KEY `user_dag_cat` (`user_id`, `dag`, `categorie`)");
+    }
 
     $result = $wpdb->replace($table, array(
         'user_id' => $user_id,
         'dag' => $dag,
+        'categorie' => $category,
         'score' => $score,
         'tijd' => $tijd
     ));

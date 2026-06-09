@@ -124,6 +124,7 @@ async function fetchRankings() {
 async function fetchUserStats() {
     const fd = new FormData();
     fd.append('action', 'gc_get_user_stats');
+    fd.append('category', dailyTag());
     try {
         const res = await fetch(cycleGameData.ajax_url, {
             method: 'POST',
@@ -133,7 +134,11 @@ async function fetchUserStats() {
         if (data.success) {
             streak = data.data.streak || 0;
             if (data.data.played_today) {
-                lastSolvedDay = todayKey();
+                // In daily mode, we check this specific category
+                const tag = dailyTag();
+                if (!dailyResolved[tag]) {
+                    dailyResolved[tag] = {date: todayKey(), outcome: 'solved-elsewhere'}; 
+                }
             }
             renderStreak();
         }
@@ -219,6 +224,7 @@ function setPool(g) {
     ['Male', 'Female', 'All'].forEach(x => document.getElementById('t-' + x).classList.toggle('on', x === g));
     buildPool();
     renderHead();
+    fetchUserStats(); // Check if this new category was already played today
     newGame();
 }
 
@@ -227,6 +233,7 @@ function setRankFilter(f) {
     document.getElementById('r-all').classList.toggle('on', f === 'all');
     document.getElementById('r-ranked').classList.toggle('on', f === 'ranked');
     buildPool();
+    fetchUserStats(); // Check if this new category was already played today
     newGame();
 }
 
@@ -237,16 +244,14 @@ function newGame() {
     // resolved, restore it (don't start a new round — that's how the give-up
     // lock was being bypassed).
     if (mode === 'daily') {
-        const rec = dailyResolved[dailyTag()];
+        const tag = dailyTag();
+        const rec = dailyResolved[tag];
         if (rec && rec.date === todayKey()) {
-            restoreResolvedDaily(rec);
-            return;
-        }
-
-        // Global check: if the player already played ANY daily puzzle today,
-        // show the block message.
-        if (lastSolvedDay === todayKey() || lastGaveUpDay === todayKey()) {
-            showPlayedTodayBlock();
+            if (rec.outcome === 'solved-elsewhere') {
+                showPlayedTodayBlock();
+            } else {
+                restoreResolvedDaily(rec);
+            }
             return;
         }
     }
@@ -466,16 +471,16 @@ function submit(rider) {
    (Real persistence happens server-side via login; this is the session mock.) */
 function recordWin() {
     totalFound++;
-    if (mode === 'daily' && lastSolvedDay !== todayKey()) {
-        lastSolvedDay = todayKey();
-        lastDailyGuesses = guesses.length;
-        dailyResolved[dailyTag()] = {date: todayKey(), outcome: 'solved', rider: answer, guesses: guesses.length};
+    const tag = dailyTag();
+    if (mode === 'daily' && (!dailyResolved[tag] || dailyResolved[tag].date !== todayKey())) {
+        dailyResolved[tag] = {date: todayKey(), outcome: 'solved', rider: answer, guesses: guesses.length};
 
         // Save score to server
         const fd = new FormData();
         fd.append('action', 'gc_save_score');
         fd.append('score', guesses.length);
         fd.append('tijd', 0); // Tijd tracking not implemented in this version of game-cycle
+        fd.append('category', tag);
         fetch(cycleGameData.ajax_url, {method: 'POST', body: fd})
             .then(() => {
                 fetchRankings().then(renderBoards);
@@ -493,9 +498,9 @@ function giveUp() {
     inp.disabled = true;
     document.getElementById('giveup').classList.add('hide');
     if (mode === 'daily') {
-        lastGaveUpDay = todayKey();
+        const tag = dailyTag();
         streak = 0;            // giving up always breaks the streak
-        dailyResolved[dailyTag()] = {date: todayKey(), outcome: 'gaveup', rider: answer, guesses: guesses.length};
+        dailyResolved[tag] = {date: todayKey(), outcome: 'gaveup', rider: answer, guesses: guesses.length};
         renderStreak();
 
         // Save a give-up (score 0 or special value) to server to lock the day
@@ -503,6 +508,7 @@ function giveUp() {
         fd.append('action', 'gc_save_score');
         fd.append('score', -1); // Use -1 to indicate give up / failed
         fd.append('tijd', 0);
+        fd.append('category', tag);
         fetch(cycleGameData.ajax_url, {method: 'POST', body: fd})
             .then(() => {
                 fetchRankings().then(renderBoards);
