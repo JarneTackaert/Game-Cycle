@@ -85,7 +85,7 @@ function todayKey() {
 
 // Each gender×rank combination is its own daily puzzle.
 function dailyTag() {
-    return pool + '|' + rankFilter;
+    return pool + ' | ' + rankFilter;
 }
 
 function seededIndex(seedStr, len) {

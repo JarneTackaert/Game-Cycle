@@ -191,7 +191,7 @@ function cycle_game_shortcode()
             Ingelogd als: <strong><?php echo esc_html($current_user->display_name); ?></strong> |
             <a href="<?php echo wp_logout_url(get_permalink()); ?>">Uitloggen</a>
         </div>
-        <div class="wrap cycle-game-plugin-container">
+        <div id="gc-game-container">
             <header>
                 <h1>CYCLE.</h1>
             </header>
