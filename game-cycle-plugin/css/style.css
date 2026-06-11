@@ -102,7 +102,8 @@ h1 {
     border: 1px solid var(--line);
     border-radius: 14px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, .05);
-    overflow: hidden
+    overflow: hidden;
+    text-align: left;
 }
 
 .rules summary {
@@ -112,7 +113,6 @@ h1 {
     font-size: 14px;
     font-weight: 700;
     display: flex;
-    align-items: center;
     gap: 8px
 }
 
@@ -610,8 +610,9 @@ button.again:hover, .giveup:hover {
 .boards {
     max-width: 100%;
     margin: 4px auto 18px;
-    display: grid;
-    grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 16px;
     text-align: left
 }
@@ -621,6 +622,8 @@ button.again:hover, .giveup:hover {
     border: 1px solid #ddd;
     border-radius: 8px;
     overflow: hidden;
+    width: 100%;
+    max-width: 280px;
 }
 
 .scoreboard h3 {
@@ -629,14 +632,15 @@ button.again:hover, .giveup:hover {
     padding: 14px 18px;
     border-bottom: 1px solid #ddd;
     display: flex;
+    margin-top: 2px;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 4px;
     color: #000;
+    text-align: left;
 }
 
 .scoreboard h3 .sub2 {
-    margin-left: auto;
     font-size: 11px;
     font-weight: 600;
     color: var(--muted);
@@ -697,6 +701,19 @@ button.again:hover, .giveup:hover {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap
+}
+
+.sbname-group {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.sbcat {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .sbval {

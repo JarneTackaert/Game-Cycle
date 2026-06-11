@@ -268,12 +268,19 @@ function gc_get_user_stats() {
     $table = $wpdb->prefix . 'gc_scores';
     $today = current_time('Y-m-d');
     $category = sanitize_text_field($_POST['category']);
-    $played_today = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM $table WHERE user_id = %d AND dag = %s AND categorie = %s", $user_id, $today, $category));
+    $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE user_id = %d AND dag = %s AND categorie = %s", $user_id, $today, $category));
     
-    wp_send_json_success(array(
+    $data = array(
         'streak' => $streak,
-        'played_today' => ($played_today > 0)
-    ));
+        'played_today' => !empty($row)
+    );
+
+    if ($row) {
+        $data['score'] = $row->score;
+        $data['outcome'] = ($row->score == -1) ? 'gaveup' : 'solved';
+    }
+    
+    wp_send_json_success($data);
 }
 
 add_action('wp_ajax_gc_save_score', 'gc_save_score');
@@ -289,6 +296,30 @@ function gc_save_score() {
 
     $table = $wpdb->prefix . 'gc_scores';
     
+    // Check of er al een score is voor vandaag en deze categorie
+    $existing = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM $table WHERE user_id = %d AND dag = %s AND categorie = %s",
+        $user_id, $dag, $category
+    ));
+
+    if ($existing) {
+        // Als de nieuwe score een 'give up' is (-1) en er is al een echte score, weiger
+        if ($score === -1 && $existing->score !== -1) {
+            wp_send_json_success('Bestaande score behouden');
+            return;
+        }
+        // Als de nieuwe score hoger is (slechter) dan de bestaande score (en bestaande was geen give-up), weiger
+        if ($score > $existing->score && $existing->score !== -1 && $score !== -1) {
+            wp_send_json_success('Bestaande betere score behouden');
+            return;
+        }
+        // Als de bestaande score al een succes was (niet -1), en de nieuwe is een give up, weiger
+        if ($existing->score !== -1 && $score === -1) {
+             wp_send_json_success('Bestaande score behouden');
+             return;
+        }
+    }
+
     // Check of tabel bestaat, zo niet maak aan (met categorie ondersteuning)
     $wpdb->query("CREATE TABLE IF NOT EXISTS `$table` (
         `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
@@ -333,12 +364,12 @@ function gc_get_rankings() {
 
     // Daily
     $daily = $wpdb->get_results($wpdb->prepare("
-        SELECT u.display_name as name, CAST(s.score AS UNSIGNED) as g
+        SELECT u.display_name as name, CAST(s.score AS UNSIGNED) as g, s.categorie
         FROM {$wpdb->prefix}users u
         INNER JOIN $table s ON u.ID = s.user_id
         WHERE s.dag = %s AND s.score > 0
         ORDER BY s.score ASC, s.tijd ASC
-        LIMIT 10
+        LIMIT 25
     ", $today));
 
     // General (All time found)

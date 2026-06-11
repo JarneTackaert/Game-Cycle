@@ -85,7 +85,7 @@ function todayKey() {
 
 // Each gender×rank combination is its own daily puzzle.
 function dailyTag() {
-    return pool + ' | ' + rankFilter;
+    return pool + ' --- ' + rankFilter;
 }
 
 function seededIndex(seedStr, len) {
@@ -113,8 +113,8 @@ async function fetchRankings() {
         const data = await res.json();
         if (data.success) {
             const myName = cycleGameData.current_user_name;
-            REAL_GENERAL = data.data.general.map(p => ({...p, me: p.name === myName}));
-            REAL_DAILY = data.data.daily.map(p => ({...p, me: p.name === myName}));
+            REAL_GENERAL = data.data.general;
+            REAL_DAILY = data.data.daily;
         }
     } catch (e) {
         console.error("Failed to fetch rankings", e);
@@ -136,8 +136,25 @@ async function fetchUserStats() {
             if (data.data.played_today) {
                 // In daily mode, we check this specific category
                 const tag = dailyTag();
-                if (!dailyResolved[tag]) {
-                    dailyResolved[tag] = {date: todayKey(), outcome: 'solved-elsewhere'}; 
+                // If it was already played today, we store it in dailyResolved to gate it
+                if (!dailyResolved[tag] || dailyResolved[tag].date !== todayKey()) {
+                    // Try to find the rider in POOL if missing from response
+                    let rider = data.data.rider || null;
+                    if (!rider && POOL.length) {
+                         rider = POOL[seededIndex(todayKey() + '|' + pool + '|' + rankFilter, POOL.length)];
+                    }
+
+                    dailyResolved[tag] = {
+                        date: todayKey(),
+                        outcome: data.data.outcome || 'solved-elsewhere',
+                        rider: rider,
+                        guesses: data.data.score || 0
+                    };
+                }
+                
+                // If we are currently in daily mode and the tag matches, we might need to trigger a block/restore
+                if (mode === 'daily' && tag === dailyTag()) {
+                    newGame();
                 }
             }
             renderStreak();
@@ -157,10 +174,10 @@ async function load() {
     await fetchUserStats();
     await fetchRankings();
     renderBoards();
-    setPool('Male');
+    await setPool('Male');
 }
 
-function setMode(m) {
+async function setMode(m) {
     mode = m;
     document.getElementById('m-daily').classList.toggle('on', m === 'daily');
     document.getElementById('m-practice').classList.toggle('on', m === 'practice');
@@ -176,6 +193,11 @@ function setMode(m) {
     const inp = document.getElementById('guess');
     inp.value = '';
     inp.disabled = false;
+    
+    if (m === 'daily') {
+        await fetchUserStats();
+    }
+    
     newGame();
 }
 
@@ -219,21 +241,21 @@ function buildPool() {
     POOL = p;
 }
 
-function setPool(g) {
+async function setPool(g) {
     pool = g;
     ['Male', 'Female', 'All'].forEach(x => document.getElementById('t-' + x).classList.toggle('on', x === g));
     buildPool();
     renderHead();
-    fetchUserStats(); // Check if this new category was already played today
+    await fetchUserStats(); // Check if this new category was already played today
     newGame();
 }
 
-function setRankFilter(f) {
+async function setRankFilter(f) {
     rankFilter = f;
     document.getElementById('r-all').classList.toggle('on', f === 'all');
     document.getElementById('r-ranked').classList.toggle('on', f === 'ranked');
     buildPool();
-    fetchUserStats(); // Check if this new category was already played today
+    await fetchUserStats(); // Check if this new category was already played today
     newGame();
 }
 
@@ -247,8 +269,13 @@ function newGame() {
         const tag = dailyTag();
         const rec = dailyResolved[tag];
         if (rec && rec.date === todayKey()) {
-            if (rec.outcome === 'solved-elsewhere') {
-                showPlayedTodayBlock();
+            // Determine the answer before blocking or restoring, so we can potentially use it
+            answer = POOL[seededIndex(todayKey() + '|' + pool + '|' + rankFilter, POOL.length)];
+            
+            if (rec.outcome === 'solved-elsewhere' || (rec.outcome === 'solved' && !rec.rider) || (rec.outcome === 'gaveup' && !rec.rider)) {
+                // If we have an outcome but no rider object in the record, try to use the answer we just calculated
+                if (!rec.rider) rec.rider = answer;
+                restoreResolvedDaily(rec);
             } else {
                 restoreResolvedDaily(rec);
             }
@@ -295,16 +322,25 @@ function numberOfGuesses() {
 /* Rebuild the finished panel for an already-resolved daily round (solved or gave up).
    Input stays locked and the give-up button stays hidden, regardless of mode-switching. */
 function restoreResolvedDaily(rec) {
-    answer = rec.rider;
-    numberOfGuesses();
-    if (rec.outcome === 'solved') {
-        document.getElementById('winTitle').textContent = 'Opgelost!';
-        document.getElementById('winp').textContent = rec.rider.fullName + ' (' + rec.rider.team + ') — je had ' + rec.guesses + ' gok' + (rec.guesses > 1 ? 'ken' : '') + 'nodig.';
+    if (rec.outcome === 'solved' || rec.outcome === 'gaveup' || rec.outcome === 'solved-elsewhere') {
+        answer = rec.rider;
+        numberOfGuesses();
+        if (rec.outcome === 'solved' || rec.outcome === 'solved-elsewhere') {
+            document.getElementById('winTitle').textContent = 'Opgelost!';
+            if (rec.guesses > 0) {
+                document.getElementById('winp').textContent = rec.rider.fullName + ' (' + rec.rider.team + ') — je had ' + rec.guesses + ' gok' + (rec.guesses > 1 ? 'ken' : '') + ' nodig.';
+            } else {
+                document.getElementById('winp').textContent = rec.rider.fullName + ' (' + rec.rider.team + ').';
+            }
+        } else {
+            document.getElementById('winTitle').textContent = 'Het antwoord was…';
+            document.getElementById('winp').textContent = rec.rider.fullName + ' (' + rec.rider.team + '). Geen zorgen — betere geluk morgen.';
+        }
+        showEmbed();
     } else {
-        document.getElementById('winTitle').textContent = 'Het antwoord was…';
-        document.getElementById('winp').textContent = rec.rider.fullName + ' (' + rec.rider.team + '). Geen zorgen — betere geluk morgen.';
+        showPlayedTodayBlock();
+        return;
     }
-    showEmbed();
     document.getElementById('win').classList.add('show');
     const counter = document.getElementById('counter');
     if (counter) {
@@ -363,9 +399,11 @@ function renderBoards() {
     // Play again only makes sense in practice; daily has one rider per day
     document.getElementById('againBtn').style.display = (mode === 'practice') ? '' : 'none';
 
+    const myName = cycleGameData.current_user_name;
+
     // GENERAL
-    document.getElementById('genBoard').innerHTML = REAL_GENERAL.map((p, i) =>
-        '<div class="sbrow gen' + (p.me ? ' me' : '') + '">' +
+    document.getElementById('genBoard').innerHTML = REAL_GENERAL.slice(0, 3).map((p, i) =>
+        '<div class="sbrow gen' + (p.name === myName ? ' me' : '') + '">' +
         '<span class="rank' + (i < 3 ? ' top' : '') + '">' + (i + 1) + '</span>' +
         '<span class="sbname">' + p.name + '</span>' +
         '<span class="sbval">' + p.found + '</span>' +
@@ -373,10 +411,13 @@ function renderBoards() {
         '</div>').join('');
 
     // DAILY
-    document.getElementById('dayBoard').innerHTML = REAL_DAILY.map((p, i) =>
-        '<div class="sbrow day' + (p.me ? ' me' : '') + '">' +
+    document.getElementById('dayBoard').innerHTML = REAL_DAILY.slice(0, 3).map((p, i) =>
+        '<div class="sbrow day' + (p.name === myName ? ' me' : '') + '">' +
         '<span class="rank' + (i < 3 ? ' top' : '') + '">' + (i + 1) + '</span>' +
+        '<div class="sbname-group">' +
         '<span class="sbname">' + p.name + '</span>' +
+        '<span class="sbcat">' + (p.categorie || '') + '</span>' +
+        '</div>' +
         '<span class="sbval">' + Math.floor(p.g) + ' <span class="u">beurt' + (p.g > 1 ? 'en' : '') + '</span></span>' +
         '</div>').join('');
 }
